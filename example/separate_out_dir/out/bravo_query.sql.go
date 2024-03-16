@@ -3,6 +3,7 @@
 package out
 
 import (
+	"sync"
 	"context"
 	"fmt"
 )
@@ -12,10 +13,19 @@ const bravoSQL = `SELECT 'bravo' as output;`
 // Bravo implements Querier.Bravo.
 func (q *DBQuerier) Bravo(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, "pggen_query_name", "Bravo")
-	row := q.conn.QueryRow(ctx, bravoSQL)
-	var item string
-	if err := row.Scan(&item); err != nil {
-		return item, fmt.Errorf("query Bravo: %w", err)
+	rows, err := q.conn.Query(ctx, bravoSQL)
+	if err != nil {
+		return "", fmt.Errorf("query Bravo: %w", err)
 	}
-	return item, nil
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*string)(nil))
+
+	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (string, error) {
+		vals := row.RawValues()
+		var item string
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan Bravo.output: %w", err)
+		}
+		return item, nil
+	})
 }

@@ -3,6 +3,7 @@
 package custom_types
 
 import (
+	"sync"
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5"
@@ -23,8 +24,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn   // underlying Postgres transport to use
-	types *typeResolver // resolve types by name
+	conn  genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -36,36 +36,7 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn, types: newTypeResolver()}
-}
-
-// typeResolver looks up the pgtype.ValueTranscoder by Postgres type name.
-type typeResolver struct {
-	connInfo *pgtype.ConnInfo // types by Postgres type name
-}
-
-func newTypeResolver() *typeResolver {
-	ci := pgtype.NewConnInfo()
-	return &typeResolver{connInfo: ci}
-}
-
-// findValue find the OID, and pgtype.ValueTranscoder for a Postgres type name.
-func (tr *typeResolver) findValue(name string) (uint32, pgtype.ValueTranscoder, bool) {
-	typ, ok := tr.connInfo.DataTypeForName(name)
-	if !ok {
-		return 0, nil, false
-	}
-	v := pgtype.NewValue(typ.Value)
-	return typ.OID, v.(pgtype.ValueTranscoder), true
-}
-
-// setValue sets the value of a ValueTranscoder to a value that should always
-// work and panics if it fails.
-func (tr *typeResolver) setValue(vt pgtype.ValueTranscoder, val interface{}) pgtype.ValueTranscoder {
-	if err := vt.Set(val); err != nil {
-		panic(fmt.Sprintf("set ValueTranscoder %T to %+v: %s", vt, val, err))
-	}
-	return vt
+	return &DBQuerier{conn: conn}
 }
 
 const customTypesSQL = `SELECT 'some_text', 1::bigint;`
@@ -78,12 +49,25 @@ type CustomTypesRow struct {
 // CustomTypes implements Querier.CustomTypes.
 func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
 	ctx = context.WithValue(ctx, "pggen_query_name", "CustomTypes")
-	row := q.conn.QueryRow(ctx, customTypesSQL)
-	var item CustomTypesRow
-	if err := row.Scan(&item.Column, &item.Int8); err != nil {
-		return item, fmt.Errorf("query CustomTypes: %w", err)
+	rows, err := q.conn.Query(ctx, customTypesSQL)
+	if err != nil {
+		return CustomTypesRow{}, fmt.Errorf("query CustomTypes: %w", err)
 	}
-	return item, nil
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*String)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*CustomInt)(nil))
+
+	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (CustomTypesRow, error) {
+		vals := row.RawValues()
+		var item CustomTypesRow
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan CustomTypes.?column?: %w", err)
+		}
+		if err := plan1.Scan(vals[1], &item); err != nil {
+			return item, fmt.Errorf("scan CustomTypes.int8: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const customMyIntSQL = `SELECT '5'::my_int as int5;`
@@ -91,12 +75,21 @@ const customMyIntSQL = `SELECT '5'::my_int as int5;`
 // CustomMyInt implements Querier.CustomMyInt.
 func (q *DBQuerier) CustomMyInt(ctx context.Context) (int, error) {
 	ctx = context.WithValue(ctx, "pggen_query_name", "CustomMyInt")
-	row := q.conn.QueryRow(ctx, customMyIntSQL)
-	var item int
-	if err := row.Scan(&item); err != nil {
-		return item, fmt.Errorf("query CustomMyInt: %w", err)
+	rows, err := q.conn.Query(ctx, customMyIntSQL)
+	if err != nil {
+		return 0, fmt.Errorf("query CustomMyInt: %w", err)
 	}
-	return item, nil
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int)(nil))
+
+	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (int, error) {
+		vals := row.RawValues()
+		var item int
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan CustomMyInt.int5: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const intArraySQL = `SELECT ARRAY ['5', '6', '7']::int[] as ints;`
@@ -108,42 +101,70 @@ func (q *DBQuerier) IntArray(ctx context.Context) ([][]int32, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query IntArray: %w", err)
 	}
-	defer rows.Close()
-	items := [][]int32{}
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]int32)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]int32, error) {
+		vals := row.RawValues()
 		var item []int32
-		if err := rows.Scan(&item); err != nil {
-			return nil, fmt.Errorf("scan IntArray row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan IntArray.ints: %w", err)
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close IntArray rows: %w", err)
-	}
-	return items, err
+		return item, nil
+	})
 }
 
-// textPreferrer wraps a pgtype.ValueTranscoder and sets the preferred encoding
-// format to text instead binary (the default). pggen uses the text format
-// when the OID is unknownOID because the binary format requires the OID.
-// Typically occurs for unregistered types.
-type textPreferrer struct {
-	pgtype.ValueTranscoder
+type scanCacheKey struct {
+	oid      uint32
+	format   int16
 	typeName string
 }
 
-// PreferredParamFormat implements pgtype.ParamFormatPreferrer.
-func (t textPreferrer) PreferredParamFormat() int16 { return pgtype.TextFormatCode }
+var (
+	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
+	plansMu sync.RWMutex
+)
 
-func (t textPreferrer) NewTypeValue() pgtype.Value {
-	return textPreferrer{ValueTranscoder: pgtype.NewValue(t.ValueTranscoder).(pgtype.ValueTranscoder), typeName: t.typeName}
+func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return plan
 }
 
-func (t textPreferrer) TypeName() string {
-	return t.typeName
+type ptrScanner[T any] struct {
+	basePlan pgtype.ScanPlan
 }
 
-// unknownOID means we don't know the OID for a type. This is okay for decoding
-// because pgx call DecodeText or DecodeBinary without requiring the OID. For
-// encoding parameters, pggen uses textPreferrer if the OID is unknown.
-const unknownOID = 0
+func (s ptrScanner[T]) Scan(src []byte, dst any) error {
+	if src == nil {
+		return nil
+	}
+	d := dst.(**T)
+	*d = new(T)
+	return s.basePlan.Scan(src, *d)
+}
+
+func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	basePlan := planScan(codec, fd, target)
+	ptrPlan := ptrScanner[T]{basePlan}
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return ptrPlan
+}

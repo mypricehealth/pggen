@@ -6,6 +6,7 @@
 package {{.GoPkg}}
 
 import (
+	"sync"
 {{ range $pkg := .Imports }}	"{{$pkg}}"
 {{ end -}}
 )
@@ -42,6 +43,7 @@ func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{conn: conn}
 }
 
+{{- range .Declarers}}{{- "\n\n" -}}{{ .Declare $.PkgPath }}{{ end -}}
 {{- end -}}
 
 {{- range $i, $q := .Queries -}}

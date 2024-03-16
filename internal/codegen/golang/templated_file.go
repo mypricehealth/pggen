@@ -2,11 +2,12 @@ package golang
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/jschaf/pggen/internal/ast"
 	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
 	"github.com/jschaf/pggen/internal/pginfer"
-	"strconv"
-	"strings"
 )
 
 // TemplatedPackage is all templated files in a pggen invocation. The templated
@@ -218,7 +219,7 @@ func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn) (string, err
 // EmitScanColumn emits scan call for a single TemplatedColumn.
 func (tq TemplatedQuery) EmitScanColumn(idx int, out TemplatedColumn) (string, error) {
 	sb := &strings.Builder{}
-	_, _ = fmt.Fprintf(sb, "if err := plan%d.Scan(vals[%d], &item); err != nil {\n", idx, idx)
+	_, _ = fmt.Fprintf(sb, "if err := plan%d.Scan(vals[%d], &item.%s); err != nil {\n", idx, idx, out.UpperName)
 	sb.WriteString("\t\t\t")
 	_, _ = fmt.Fprintf(sb, `return item, fmt.Errorf("scan %s.%s: %%w", err)`, tq.Name, out.PgName)
 	sb.WriteString("\n")

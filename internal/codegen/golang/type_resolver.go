@@ -2,11 +2,12 @@ package golang
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/jschaf/pggen/internal/casing"
 	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
 	"github.com/jschaf/pggen/internal/pg"
-	"strconv"
-	"strings"
 )
 
 // TypeResolver handles the mapping between Postgres and Go types.

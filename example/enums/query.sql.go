@@ -3,6 +3,7 @@
 package enums
 
 import (
+	"sync"
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5"
@@ -32,8 +33,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn   // underlying Postgres transport to use
-	types *typeResolver // resolve types by name
+	conn  genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -45,7 +45,7 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn, types: newTypeResolver()}
+	return &DBQuerier{conn: conn}
 }
 
 // Device represents the Postgres composite type "device".
@@ -84,102 +84,6 @@ const (
 
 func (d DeviceType) String() string { return string(d) }
 
-// typeResolver looks up the pgtype.ValueTranscoder by Postgres type name.
-type typeResolver struct {
-	connInfo *pgtype.ConnInfo // types by Postgres type name
-}
-
-func newTypeResolver() *typeResolver {
-	ci := pgtype.NewConnInfo()
-	return &typeResolver{connInfo: ci}
-}
-
-// findValue find the OID, and pgtype.ValueTranscoder for a Postgres type name.
-func (tr *typeResolver) findValue(name string) (uint32, pgtype.ValueTranscoder, bool) {
-	typ, ok := tr.connInfo.DataTypeForName(name)
-	if !ok {
-		return 0, nil, false
-	}
-	v := pgtype.NewValue(typ.Value)
-	return typ.OID, v.(pgtype.ValueTranscoder), true
-}
-
-// setValue sets the value of a ValueTranscoder to a value that should always
-// work and panics if it fails.
-func (tr *typeResolver) setValue(vt pgtype.ValueTranscoder, val interface{}) pgtype.ValueTranscoder {
-	if err := vt.Set(val); err != nil {
-		panic(fmt.Sprintf("set ValueTranscoder %T to %+v: %s", vt, val, err))
-	}
-	return vt
-}
-
-type compositeField struct {
-	name       string                 // name of the field
-	typeName   string                 // Postgres type name
-	defaultVal pgtype.ValueTranscoder // default value to use
-}
-
-func (tr *typeResolver) newCompositeValue(name string, fields ...compositeField) pgtype.ValueTranscoder {
-	if _, val, ok := tr.findValue(name); ok {
-		return val
-	}
-	fs := make([]pgtype.CompositeTypeField, len(fields))
-	vals := make([]pgtype.ValueTranscoder, len(fields))
-	isBinaryOk := true
-	for i, field := range fields {
-		oid, val, ok := tr.findValue(field.typeName)
-		if !ok {
-			oid = unknownOID
-			val = field.defaultVal
-		}
-		isBinaryOk = isBinaryOk && oid != unknownOID
-		fs[i] = pgtype.CompositeTypeField{Name: field.name, OID: oid}
-		vals[i] = val
-	}
-	// Okay to ignore error because it's only thrown when the number of field
-	// names does not equal the number of ValueTranscoders.
-	typ, _ := pgtype.NewCompositeTypeValues(name, fs, vals)
-	if !isBinaryOk {
-		return textPreferrer{ValueTranscoder: typ, typeName: name}
-	}
-	return typ
-}
-
-func (tr *typeResolver) newArrayValue(name, elemName string, defaultVal func() pgtype.ValueTranscoder) pgtype.ValueTranscoder {
-	if _, val, ok := tr.findValue(name); ok {
-		return val
-	}
-	elemOID, elemVal, ok := tr.findValue(elemName)
-	elemValFunc := func() pgtype.ValueTranscoder {
-		return pgtype.NewValue(elemVal).(pgtype.ValueTranscoder)
-	}
-	if !ok {
-		elemOID = unknownOID
-		elemValFunc = defaultVal
-	}
-	typ := pgtype.NewArrayType(name, elemOID, elemValFunc)
-	if elemOID == unknownOID {
-		return textPreferrer{ValueTranscoder: typ, typeName: name}
-	}
-	return typ
-}
-
-// newDevice creates a new pgtype.ValueTranscoder for the Postgres
-// composite type 'device'.
-func (tr *typeResolver) newDevice() pgtype.ValueTranscoder {
-	return tr.newCompositeValue(
-		"device",
-		compositeField{name: "mac", typeName: "macaddr", defaultVal: &pgtype.Macaddr{}},
-		compositeField{name: "type", typeName: "device_type", defaultVal: newDeviceTypeEnum()},
-	)
-}
-
-// newDeviceTypeArray creates a new pgtype.ValueTranscoder for the Postgres
-// '_device_type' array type.
-func (tr *typeResolver) newDeviceTypeArray() pgtype.ValueTranscoder {
-	return tr.newArrayValue("_device_type", "device_type", newDeviceTypeEnum)
-}
-
 const findAllDevicesSQL = `SELECT mac, type
 FROM device;`
 
@@ -195,19 +99,21 @@ func (q *DBQuerier) FindAllDevices(ctx context.Context) ([]FindAllDevicesRow, er
 	if err != nil {
 		return nil, fmt.Errorf("query FindAllDevices: %w", err)
 	}
-	defer rows.Close()
-	items := []FindAllDevicesRow{}
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Macaddr)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*DeviceType)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindAllDevicesRow, error) {
+		vals := row.RawValues()
 		var item FindAllDevicesRow
-		if err := rows.Scan(&item.Mac, &item.Type); err != nil {
-			return nil, fmt.Errorf("scan FindAllDevices row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindAllDevices.mac: %w", err)
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindAllDevices rows: %w", err)
-	}
-	return items, err
+		if err := plan1.Scan(vals[1], &item); err != nil {
+			return item, fmt.Errorf("scan FindAllDevices.type: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const insertDeviceSQL = `INSERT INTO device (mac, type)
@@ -218,7 +124,7 @@ func (q *DBQuerier) InsertDevice(ctx context.Context, mac pgtype.Macaddr, typePg
 	ctx = context.WithValue(ctx, "pggen_query_name", "InsertDevice")
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, typePg)
 	if err != nil {
-		return cmdTag, fmt.Errorf("exec query InsertDevice: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", err)
 	}
 	return cmdTag, err
 }
@@ -228,16 +134,21 @@ const findOneDeviceArraySQL = `SELECT enum_range(NULL::device_type) AS device_ty
 // FindOneDeviceArray implements Querier.FindOneDeviceArray.
 func (q *DBQuerier) FindOneDeviceArray(ctx context.Context) ([]DeviceType, error) {
 	ctx = context.WithValue(ctx, "pggen_query_name", "FindOneDeviceArray")
-	row := q.conn.QueryRow(ctx, findOneDeviceArraySQL)
-	item := []DeviceType{}
-	deviceTypesArray := q.types.newDeviceTypeArray()
-	if err := row.Scan(deviceTypesArray); err != nil {
-		return item, fmt.Errorf("query FindOneDeviceArray: %w", err)
+	rows, err := q.conn.Query(ctx, findOneDeviceArraySQL)
+	if err != nil {
+		return nil, fmt.Errorf("query FindOneDeviceArray: %w", err)
 	}
-	if err := deviceTypesArray.AssignTo(&item); err != nil {
-		return item, fmt.Errorf("assign FindOneDeviceArray row: %w", err)
-	}
-	return item, nil
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]DeviceType)(nil))
+
+	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]DeviceType, error) {
+		vals := row.RawValues()
+		var item []DeviceType
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindOneDeviceArray.device_types: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const findManyDeviceArraySQL = `SELECT enum_range('ipad'::device_type, 'iot'::device_type) AS device_types
@@ -251,23 +162,17 @@ func (q *DBQuerier) FindManyDeviceArray(ctx context.Context) ([][]DeviceType, er
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArray: %w", err)
 	}
-	defer rows.Close()
-	items := [][]DeviceType{}
-	deviceTypesArray := q.types.newDeviceTypeArray()
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]DeviceType)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]DeviceType, error) {
+		vals := row.RawValues()
 		var item []DeviceType
-		if err := rows.Scan(deviceTypesArray); err != nil {
-			return nil, fmt.Errorf("scan FindManyDeviceArray row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindManyDeviceArray.device_types: %w", err)
 		}
-		if err := deviceTypesArray.AssignTo(&item); err != nil {
-			return nil, fmt.Errorf("assign FindManyDeviceArray row: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindManyDeviceArray rows: %w", err)
-	}
-	return items, err
+		return item, nil
+	})
 }
 
 const findManyDeviceArrayWithNumSQL = `SELECT 1 AS num, enum_range('ipad'::device_type, 'iot'::device_type) AS device_types
@@ -286,23 +191,21 @@ func (q *DBQuerier) FindManyDeviceArrayWithNum(ctx context.Context) ([]FindManyD
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArrayWithNum: %w", err)
 	}
-	defer rows.Close()
-	items := []FindManyDeviceArrayWithNumRow{}
-	deviceTypesArray := q.types.newDeviceTypeArray()
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**int32)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*[]DeviceType)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindManyDeviceArrayWithNumRow, error) {
+		vals := row.RawValues()
 		var item FindManyDeviceArrayWithNumRow
-		if err := rows.Scan(&item.Num, deviceTypesArray); err != nil {
-			return nil, fmt.Errorf("scan FindManyDeviceArrayWithNum row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindManyDeviceArrayWithNum.num: %w", err)
 		}
-		if err := deviceTypesArray.AssignTo(&item.DeviceTypes); err != nil {
-			return nil, fmt.Errorf("assign FindManyDeviceArrayWithNum row: %w", err)
+		if err := plan1.Scan(vals[1], &item); err != nil {
+			return item, fmt.Errorf("scan FindManyDeviceArrayWithNum.device_types: %w", err)
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindManyDeviceArrayWithNum rows: %w", err)
-	}
-	return items, err
+		return item, nil
+	})
 }
 
 const enumInsideCompositeSQL = `SELECT ROW('08:00:2b:01:02:03'::macaddr, 'phone'::device_type) ::device;`
@@ -310,39 +213,74 @@ const enumInsideCompositeSQL = `SELECT ROW('08:00:2b:01:02:03'::macaddr, 'phone'
 // EnumInsideComposite implements Querier.EnumInsideComposite.
 func (q *DBQuerier) EnumInsideComposite(ctx context.Context) (Device, error) {
 	ctx = context.WithValue(ctx, "pggen_query_name", "EnumInsideComposite")
-	row := q.conn.QueryRow(ctx, enumInsideCompositeSQL)
-	var item Device
-	rowRow := q.types.newDevice()
-	if err := row.Scan(rowRow); err != nil {
-		return item, fmt.Errorf("query EnumInsideComposite: %w", err)
+	rows, err := q.conn.Query(ctx, enumInsideCompositeSQL)
+	if err != nil {
+		return Device{}, fmt.Errorf("query EnumInsideComposite: %w", err)
 	}
-	if err := rowRow.AssignTo(&item); err != nil {
-		return item, fmt.Errorf("assign EnumInsideComposite row: %w", err)
-	}
-	return item, nil
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Device)(nil))
+
+	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (Device, error) {
+		vals := row.RawValues()
+		var item Device
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan EnumInsideComposite.row: %w", err)
+		}
+		return item, nil
+	})
 }
 
-// textPreferrer wraps a pgtype.ValueTranscoder and sets the preferred encoding
-// format to text instead binary (the default). pggen uses the text format
-// when the OID is unknownOID because the binary format requires the OID.
-// Typically occurs for unregistered types.
-type textPreferrer struct {
-	pgtype.ValueTranscoder
+type scanCacheKey struct {
+	oid      uint32
+	format   int16
 	typeName string
 }
 
-// PreferredParamFormat implements pgtype.ParamFormatPreferrer.
-func (t textPreferrer) PreferredParamFormat() int16 { return pgtype.TextFormatCode }
+var (
+	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
+	plansMu sync.RWMutex
+)
 
-func (t textPreferrer) NewTypeValue() pgtype.Value {
-	return textPreferrer{ValueTranscoder: pgtype.NewValue(t.ValueTranscoder).(pgtype.ValueTranscoder), typeName: t.typeName}
+func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return plan
 }
 
-func (t textPreferrer) TypeName() string {
-	return t.typeName
+type ptrScanner[T any] struct {
+	basePlan pgtype.ScanPlan
 }
 
-// unknownOID means we don't know the OID for a type. This is okay for decoding
-// because pgx call DecodeText or DecodeBinary without requiring the OID. For
-// encoding parameters, pggen uses textPreferrer if the OID is unknown.
-const unknownOID = 0
+func (s ptrScanner[T]) Scan(src []byte, dst any) error {
+	if src == nil {
+		return nil
+	}
+	d := dst.(**T)
+	*d = new(T)
+	return s.basePlan.Scan(src, *d)
+}
+
+func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	basePlan := planScan(codec, fd, target)
+	ptrPlan := ptrScanner[T]{basePlan}
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return ptrPlan
+}

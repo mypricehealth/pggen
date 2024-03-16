@@ -3,6 +3,7 @@
 package order
 
 import (
+	"sync"
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -24,19 +25,29 @@ func (q *DBQuerier) FindOrdersByPrice(ctx context.Context, minTotal pgtype.Numer
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByPrice: %w", err)
 	}
-	defer rows.Close()
-	items := []FindOrdersByPriceRow{}
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int32)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*Timestamptz)(nil))
+	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*Numeric)(nil))
+	plan3 := planScan(pgtype.TextCodec{}, fds[3], (**int32)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindOrdersByPriceRow, error) {
+		vals := row.RawValues()
 		var item FindOrdersByPriceRow
-		if err := rows.Scan(&item.OrderID, &item.OrderDate, &item.OrderTotal, &item.CustomerID); err != nil {
-			return nil, fmt.Errorf("scan FindOrdersByPrice row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindOrdersByPrice.order_id: %w", err)
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindOrdersByPrice rows: %w", err)
-	}
-	return items, err
+		if err := plan1.Scan(vals[1], &item); err != nil {
+			return item, fmt.Errorf("scan FindOrdersByPrice.order_date: %w", err)
+		}
+		if err := plan2.Scan(vals[2], &item); err != nil {
+			return item, fmt.Errorf("scan FindOrdersByPrice.order_total: %w", err)
+		}
+		if err := plan3.Scan(vals[3], &item); err != nil {
+			return item, fmt.Errorf("scan FindOrdersByPrice.customer_id: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const findOrdersMRRSQL = `SELECT date_trunc('month', order_date) AS month, sum(order_total) AS order_mrr
@@ -55,17 +66,19 @@ func (q *DBQuerier) FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, erro
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersMRR: %w", err)
 	}
-	defer rows.Close()
-	items := []FindOrdersMRRRow{}
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Timestamptz)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*Numeric)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindOrdersMRRRow, error) {
+		vals := row.RawValues()
 		var item FindOrdersMRRRow
-		if err := rows.Scan(&item.Month, &item.OrderMRR); err != nil {
-			return nil, fmt.Errorf("scan FindOrdersMRR row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindOrdersMRR.month: %w", err)
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindOrdersMRR rows: %w", err)
-	}
-	return items, err
+		if err := plan1.Scan(vals[1], &item); err != nil {
+			return item, fmt.Errorf("scan FindOrdersMRR.order_mrr: %w", err)
+		}
+		return item, nil
+	})
 }
