@@ -204,7 +204,7 @@ func (tq TemplatedQuery) isInlineParams() bool {
 
 // EmitPlanScan emits the variable that hold the pgtype.ScanPlan for a query
 // output.
-func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn, pkgPath string) (string, error) {
+func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn) (string, error) {
 	switch tq.ResultKind {
 	case ast.ResultKindExec, ast.ResultKindRows:
 		return "", fmt.Errorf("cannot EmitPlanScanArgs for %s query %s", tq.ResultKind, tq.Name)
@@ -213,7 +213,7 @@ func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn, pkgPath stri
 	default:
 		return "", fmt.Errorf("unhandled EmitPlanScanArgs type: %s", tq.ResultKind)
 	}
-	return fmt.Sprintf("plan%d := planScan(pgtype.TextCodec{}, fds[%d], (*%s)(nil))", idx, idx, gotype.QualifyType(out.Type, pkgPath)), nil
+	return fmt.Sprintf("plan%d := planScan(pgtype.TextCodec{}, fds[%d], (*%s)(nil))", idx, idx, out.QualType), nil
 }
 
 // EmitScanColumn emits scan call for a single TemplatedColumn.
