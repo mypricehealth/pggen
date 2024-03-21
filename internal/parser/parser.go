@@ -203,7 +203,7 @@ func (p *parser) errorExpected(pos gotok.Pos, msg string) {
 }
 
 // Regexp to extract query annotations that control output.
-var annotationRegexp = regexp.MustCompile(`name: ([a-zA-Z0-9_$]+)[ \t]+(:many|:one|:exec|:rows)[ \t]*(.*)`)
+var annotationRegexp = regexp.MustCompile(`name: ([a-zA-Z0-9_$]+)[ \t]+(:many|:one|:exec|:rows|:string)[ \t]*(.*)`)
 
 func (p *parser) parseQuery() ast.Query {
 	if p.trace {

@@ -173,9 +173,18 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 		if len(nonVoidCols) == 0 {
 			resultKind = ast.ResultKindExec
 		}
+
+		var sqlVarName string
+		if resultKind == ast.ResultKindString {
+			// Export the raw SQL if the result kind is `:string`
+			sqlVarName = tm.caser.ToUpperGoIdent(query.Name) + "SQL"
+		} else {
+			sqlVarName = tm.caser.ToLowerGoIdent(query.Name) + "SQL"
+		}
+
 		queries = append(queries, TemplatedQuery{
 			Name:             tm.caser.ToUpperGoIdent(query.Name),
-			SQLVarName:       tm.caser.ToLowerGoIdent(query.Name) + "SQL",
+			SQLVarName:       sqlVarName,
 			ResultKind:       resultKind,
 			Doc:              docs.String(),
 			PreparedSQL:      query.PreparedSQL,

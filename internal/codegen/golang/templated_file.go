@@ -219,7 +219,7 @@ func (tq TemplatedQuery) isInlineParams() bool {
 // output.
 func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn) (string, error) {
 	switch tq.ResultKind {
-	case ast.ResultKindExec, ast.ResultKindRows:
+	case ast.ResultKindExec, ast.ResultKindRows, ast.ResultKindString:
 		return "", fmt.Errorf("cannot EmitPlanScanArgs for %s query %s", tq.ResultKind, tq.Name)
 	case ast.ResultKindMany, ast.ResultKindOne:
 		break // okay
@@ -253,7 +253,7 @@ func (tq TemplatedQuery) EmitScanColumn(idx int, out TemplatedColumn) (string, e
 // pgx.Rows.
 func (tq TemplatedQuery) EmitRowScanArgs() (string, error) {
 	switch tq.ResultKind {
-	case ast.ResultKindExec, ast.ResultKindRows:
+	case ast.ResultKindExec, ast.ResultKindRows, ast.ResultKindString:
 		return "", fmt.Errorf("cannot EmitRowScanArgs for %s query %s", tq.ResultKind, tq.Name)
 	case ast.ResultKindMany, ast.ResultKindOne:
 		break // okay
@@ -307,7 +307,7 @@ func (tq TemplatedQuery) EmitRowScanArgs() (string, error) {
 
 func (tq TemplatedQuery) EmitCollectionFunc() (string, error) {
 	switch tq.ResultKind {
-	case ast.ResultKindExec, ast.ResultKindRows:
+	case ast.ResultKindExec, ast.ResultKindRows, ast.ResultKindString:
 		return "", fmt.Errorf("cannot EmitCollectionFunc for %s query %s", tq.ResultKind, tq.Name)
 	case ast.ResultKindMany:
 		return "pgx.CollectRows", nil
@@ -322,6 +322,11 @@ func (tq TemplatedQuery) EmitCollectionFunc() (string, error) {
 // of the overall query result type, like FindAuthorsRow when the overall return
 // type is []FindAuthorsRow.
 func (tq TemplatedQuery) EmitSingularResultType() string {
+	if tq.ResultKind == ast.ResultKindString {
+		// This indicates a bug. This should have been caught this earlier.
+		panic(fmt.Errorf("unhandled EmitSingularResultType for %s query", tq.ResultKind))
+	}
+
 	if tq.ResultKind == ast.ResultKindExec {
 		return "pgconn.CommandTag"
 	} else if tq.ResultKind == ast.ResultKindRows {
@@ -348,6 +353,8 @@ func (tq TemplatedQuery) EmitResultType() (string, error) {
 		return "[]" + tq.EmitSingularResultType(), nil
 	case ast.ResultKindOne:
 		return tq.EmitSingularResultType(), nil
+	case ast.ResultKindString:
+		return "", fmt.Errorf("EmitResultType should not be called for kind: %s", tq.ResultKind)
 	default:
 		return "", fmt.Errorf("unhandled EmitResultType kind: %s", tq.ResultKind)
 	}
@@ -419,6 +426,8 @@ func (tq TemplatedQuery) EmitZeroResult() (string, error) {
 		default:
 			return typ + "{}", nil // won't work for type Foo int
 		}
+	case ast.ResultKindString:
+		return "", fmt.Errorf("EmitZeroResult should not be called for kind: %s", tq.ResultKind)
 	default:
 		return "", fmt.Errorf("unhandled EmitZeroResult kind: %s", tq.ResultKind)
 	}
@@ -506,6 +515,8 @@ func (tq TemplatedQuery) EmitRowStruct() string {
 		}
 		sb.WriteString("}")
 		return sb.String()
+	case ast.ResultKindString:
+		panic(fmt.Errorf("EmitRowStruct should not be called for kind: %s", tq.ResultKind))
 	default:
 		panic("unhandled result type: " + tq.ResultKind)
 	}

@@ -16,10 +16,13 @@ import (
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
 {{- range $pkgFile := .Pkg.Files -}}
-{{- range $i, $q := $pkgFile.Queries }} {{- "\n\t" -}}
+{{- range $i, $q := $pkgFile.Queries }}
+    {{- if ne $q.ResultKind ":string" }}
+    {{- "\n\t" -}}
 	{{- if $q.Doc }}{{ $q.Doc }}	{{ end -}}
 	{{.Name}}(ctx context.Context {{- $q.EmitParams }}) ({{ $q.EmitResultType }}, error)
 	{{- "\n" -}}
+    {{- end -}}
 {{end -}}
 {{- end -}}
 }
@@ -48,9 +51,11 @@ func NewQuerier(conn genericConn) *DBQuerier {
 {{- range $i, $q := .Queries -}}
 {{- "\n\n" -}}
 const {{ $q.SQLVarName }} = {{ $q.EmitPreparedSQL }}
+{{- if ne $q.ResultKind ":string" }}
 {{- $q.EmitParamStruct -}}
 {{- $q.EmitRowStruct -}}
 {{- "\n\n" -}}
+
 // {{ $q.Name }} implements Querier.{{ $q.Name }}.
 func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ $q.EmitResultType }}, error) {
 	ctx = context.WithValue(ctx, "pggen_query_name", "{{ $q.Name }}")
@@ -86,6 +91,7 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
 	})
 {{- end }}
 }
+{{- end }}
 {{- end -}}
 {{- "\n" -}}
 {{ if .IsLeader }}
