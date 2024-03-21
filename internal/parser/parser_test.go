@@ -3,7 +3,7 @@ package parser
 import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/jschaf/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/ast"
 	gotok "go/token"
 	"testing"
 )

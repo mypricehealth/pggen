@@ -1,7 +1,7 @@
 package pg
 
 import (
-	"github.com/jschaf/pggen/internal/pg/pgoid"
+	"github.com/mypricehealth/pggen/internal/pg/pgoid"
 	"strconv"
 )
 

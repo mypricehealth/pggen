@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
-	"github.com/jschaf/pggen/internal/pg"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 // NameCompositeTranscoderFunc returns the function name that creates a

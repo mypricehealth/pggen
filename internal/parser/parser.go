@@ -2,9 +2,9 @@ package parser
 
 import (
 	"fmt"
-	"github.com/jschaf/pggen/internal/ast"
-	"github.com/jschaf/pggen/internal/scanner"
-	"github.com/jschaf/pggen/internal/token"
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/scanner"
+	"github.com/mypricehealth/pggen/internal/token"
 	goscan "go/scanner"
 	gotok "go/token"
 	"regexp"

@@ -1,4 +1,4 @@
-module github.com/jschaf/pggen
+module github.com/mypricehealth/pggen
 
 go 1.21.5
 

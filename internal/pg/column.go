@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5"
-	"github.com/jschaf/pggen/internal/texts"
+	"github.com/mypricehealth/pggen/internal/texts"
 	"strconv"
 	"strings"
 	"sync"

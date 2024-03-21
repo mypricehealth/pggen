@@ -1,7 +1,7 @@
 package golang
 
 import (
-	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 	"sort"
 )
 
@@ -15,7 +15,7 @@ func NewImportSet() *ImportSet {
 }
 
 // AddPackage adds a fully qualified package path to the set, like
-// "github.com/jschaf/pggen/foo".
+// "github.com/mypricehealth/pggen/foo".
 func (s *ImportSet) AddPackage(p string) {
 	s.imports[p] = struct{}{}
 }

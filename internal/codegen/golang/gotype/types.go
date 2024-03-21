@@ -3,8 +3,8 @@ package gotype
 import (
 	"bytes"
 	"fmt"
-	"github.com/jschaf/pggen/internal/casing"
-	"github.com/jschaf/pggen/internal/pg"
+	"github.com/mypricehealth/pggen/internal/casing"
+	"github.com/mypricehealth/pggen/internal/pg"
 	"regexp"
 	"strconv"
 	"strings"
@@ -13,7 +13,7 @@ import (
 
 // Type is a Go type.
 type Type interface {
-	// Import returns the full package path, like "github.com/jschaf/pggen/foo".
+	// Import returns the full package path, like "github.com/mypricehealth/pggen/foo".
 	// Empty for builtin types.
 	Import() string
 	// BaseName returns the unqualified, base name of the type, like "Foo" in:
@@ -51,7 +51,7 @@ type (
 
 	// ImportType is an imported type.
 	ImportType struct {
-		PkgPath string // fully qualified package path, like "github.com/jschaf/pggen"
+		PkgPath string // fully qualified package path, like "github.com/mypricehealth/pggen"
 		Type    Type   // type to import
 	}
 
@@ -263,7 +263,7 @@ func MustParseOpaqueType(qualType string) Type {
 var majorVersionRegexp = regexp.MustCompile(`^v[0-9]+$`)
 
 // ExtractShortPackage gets the last part of a package path like "generate" in
-// "github.com/jschaf/pggen/generate".
+// "github.com/mypricehealth/pggen/generate".
 func ExtractShortPackage(pkgPath []byte) string {
 	parts := bytes.Split(pkgPath, []byte{'/'})
 	shortPkg := parts[len(parts)-1]

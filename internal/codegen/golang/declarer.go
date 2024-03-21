@@ -3,7 +3,7 @@ package golang
 import (
 	"sort"
 
-	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 )
 
 // Declarer is implemented by any value that needs to declare types, data, or
