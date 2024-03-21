@@ -6,7 +6,6 @@
 package {{.GoPkg}}
 
 import (
-	"sync"
 {{ range $pkg := .Imports }}	"{{$pkg}}"
 {{ end -}}
 )

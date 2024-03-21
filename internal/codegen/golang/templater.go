@@ -2,14 +2,15 @@ package golang
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+	"unicode"
+
 	"github.com/mypricehealth/pggen/internal/ast"
 	"github.com/mypricehealth/pggen/internal/casing"
 	"github.com/mypricehealth/pggen/internal/codegen"
 	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 	"github.com/mypricehealth/pggen/internal/gomod"
-	"strconv"
-	"strings"
-	"unicode"
 )
 
 // Templater creates query file templates.
@@ -118,6 +119,7 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 	if isLeader {
 		imports.AddPackage("github.com/jackc/pgx/v5/pgtype")
 		imports.AddPackage("github.com/jackc/pgx/v5")
+		imports.AddPackage("sync")
 	}
 
 	pkgPath := ""
