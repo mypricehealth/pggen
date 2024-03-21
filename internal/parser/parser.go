@@ -2,14 +2,15 @@ package parser
 
 import (
 	"fmt"
-	"github.com/mypricehealth/pggen/internal/ast"
-	"github.com/mypricehealth/pggen/internal/scanner"
-	"github.com/mypricehealth/pggen/internal/token"
 	goscan "go/scanner"
 	gotok "go/token"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/scanner"
+	"github.com/mypricehealth/pggen/internal/token"
 )
 
 type parser struct {
@@ -202,7 +203,7 @@ func (p *parser) errorExpected(pos gotok.Pos, msg string) {
 }
 
 // Regexp to extract query annotations that control output.
-var annotationRegexp = regexp.MustCompile(`name: ([a-zA-Z0-9_$]+)[ \t]+(:many|:one|:exec)[ \t]*(.*)`)
+var annotationRegexp = regexp.MustCompile(`name: ([a-zA-Z0-9_$]+)[ \t]+(:many|:one|:exec|:rows)[ \t]*(.*)`)
 
 func (p *parser) parseQuery() ast.Query {
 	if p.trace {

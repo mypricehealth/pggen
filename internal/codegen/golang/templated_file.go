@@ -206,8 +206,8 @@ func (tq TemplatedQuery) isInlineParams() bool {
 // output.
 func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn, pkgPath string) (string, error) {
 	switch tq.ResultKind {
-	case ast.ResultKindExec:
-		return "", fmt.Errorf("cannot EmitPlanScanArgs for :exec query %s", tq.Name)
+	case ast.ResultKindExec, ast.ResultKindRows:
+		return "", fmt.Errorf("cannot EmitPlanScanArgs for %s query %s", tq.ResultKind, tq.Name)
 	case ast.ResultKindMany, ast.ResultKindOne:
 		break // okay
 	default:
@@ -240,8 +240,8 @@ func (tq TemplatedQuery) EmitScanColumn(idx int, out TemplatedColumn) (string, e
 // pgx.Rows.
 func (tq TemplatedQuery) EmitRowScanArgs() (string, error) {
 	switch tq.ResultKind {
-	case ast.ResultKindExec:
-		return "", fmt.Errorf("cannot EmitRowScanArgs for :exec query %s", tq.Name)
+	case ast.ResultKindExec, ast.ResultKindRows:
+		return "", fmt.Errorf("cannot EmitRowScanArgs for %s query %s", tq.ResultKind, tq.Name)
 	case ast.ResultKindMany, ast.ResultKindOne:
 		break // okay
 	default:
@@ -294,8 +294,8 @@ func (tq TemplatedQuery) EmitRowScanArgs() (string, error) {
 
 func (tq TemplatedQuery) EmitCollectionFunc() (string, error) {
 	switch tq.ResultKind {
-	case ast.ResultKindExec:
-		return "", fmt.Errorf("cannot EmitCollectionFunc for :exec query %s", tq.Name)
+	case ast.ResultKindExec, ast.ResultKindRows:
+		return "", fmt.Errorf("cannot EmitCollectionFunc for %s query %s", tq.ResultKind, tq.Name)
 	case ast.ResultKindMany:
 		return "pgx.CollectRows", nil
 	case ast.ResultKindOne:
@@ -311,6 +311,8 @@ func (tq TemplatedQuery) EmitCollectionFunc() (string, error) {
 func (tq TemplatedQuery) EmitSingularResultType() string {
 	if tq.ResultKind == ast.ResultKindExec {
 		return "pgconn.CommandTag"
+	} else if tq.ResultKind == ast.ResultKindRows {
+		return "pgx.Rows"
 	}
 	if len(tq.Outputs) == 0 {
 		return "pgconn.CommandTag"
@@ -327,6 +329,8 @@ func (tq TemplatedQuery) EmitResultType() (string, error) {
 	switch tq.ResultKind {
 	case ast.ResultKindExec:
 		return "pgconn.CommandTag", nil
+	case ast.ResultKindRows:
+		return "pgx.Rows", nil
 	case ast.ResultKindMany:
 		return "[]" + tq.EmitSingularResultType(), nil
 	case ast.ResultKindOne:
@@ -377,6 +381,8 @@ func (tq TemplatedQuery) EmitZeroResult() (string, error) {
 	switch tq.ResultKind {
 	case ast.ResultKindExec:
 		return "pgconn.CommandTag{}", nil
+	case ast.ResultKindRows:
+		return "nil", nil
 	case ast.ResultKindMany:
 		return "nil", nil // empty slice
 	case ast.ResultKindOne:
@@ -459,6 +465,8 @@ func getLongestOutput(outs []TemplatedColumn) (int, int) {
 func (tq TemplatedQuery) EmitRowStruct() string {
 	switch tq.ResultKind {
 	case ast.ResultKindExec:
+		return ""
+	case ast.ResultKindRows:
 		return ""
 	case ast.ResultKindOne, ast.ResultKindMany:
 		if len(tq.Outputs) == 1 {

@@ -71,6 +71,7 @@ const (
 	ResultKindMany ResultKind = ":many"
 	ResultKindOne  ResultKind = ":one"
 	ResultKindExec ResultKind = ":exec"
+	ResultKindRows ResultKind = ":rows"
 )
 
 // Pragmas are options to control generated code for a single query.
