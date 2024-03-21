@@ -219,7 +219,16 @@ func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn) (string, err
 // EmitScanColumn emits scan call for a single TemplatedColumn.
 func (tq TemplatedQuery) EmitScanColumn(idx int, out TemplatedColumn) (string, error) {
 	sb := &strings.Builder{}
-	_, _ = fmt.Fprintf(sb, "if err := plan%d.Scan(vals[%d], &item.%s); err != nil {\n", idx, idx, out.UpperName)
+
+	var scanInto = ""
+	switch out.Type.(type) {
+	case *gotype.ArrayType, *gotype.CompositeType:
+		scanInto = "&item." + out.UpperName
+	default:
+		scanInto = "&item"
+	}
+
+	_, _ = fmt.Fprintf(sb, "if err := plan%d.Scan(vals[%d], %s); err != nil {\n", idx, idx, scanInto)
 	sb.WriteString("\t\t\t")
 	_, _ = fmt.Fprintf(sb, `return item, fmt.Errorf("scan %s.%s: %%w", err)`, tq.Name, out.PgName)
 	sb.WriteString("\n")
