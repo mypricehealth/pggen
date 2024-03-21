@@ -355,7 +355,7 @@ func (q *DBQuerier) ArrayAggFirstName(ctx context.Context, authorID int32) ([]st
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]string, error) {
 		vals := row.RawValues()
 		var item []string
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.Names); err != nil {
 			return item, fmt.Errorf("scan ArrayAggFirstName.names: %w", err)
 		}
 		return item, nil

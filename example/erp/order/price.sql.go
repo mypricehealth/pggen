@@ -27,8 +27,8 @@ func (q *DBQuerier) FindOrdersByPrice(ctx context.Context, minTotal pgtype.Numer
 	}
 	fds := rows.FieldDescriptions()
 	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int32)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*Timestamptz)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*Numeric)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*pgtype.Timestamptz)(nil))
+	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*pgtype.Numeric)(nil))
 	plan3 := planScan(pgtype.TextCodec{}, fds[3], (**int32)(nil))
 
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindOrdersByPriceRow, error) {
@@ -67,8 +67,8 @@ func (q *DBQuerier) FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, erro
 		return nil, fmt.Errorf("query FindOrdersMRR: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Timestamptz)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*Numeric)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.Timestamptz)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*pgtype.Numeric)(nil))
 
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindOrdersMRRRow, error) {
 		vals := row.RawValues()

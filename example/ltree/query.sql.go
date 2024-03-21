@@ -52,7 +52,7 @@ func (q *DBQuerier) FindTopScienceChildren(ctx context.Context) ([]pgtype.Text, 
 		return nil, fmt.Errorf("query FindTopScienceChildren: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Text)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.Text)(nil))
 
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (pgtype.Text, error) {
 		vals := row.RawValues()
@@ -76,7 +76,7 @@ func (q *DBQuerier) FindTopScienceChildrenAgg(ctx context.Context) (pgtype.TextA
 		return TextArray{}, fmt.Errorf("query FindTopScienceChildrenAgg: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*TextArray)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.TextArray)(nil))
 
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (pgtype.TextArray, error) {
 		vals := row.RawValues()
@@ -137,8 +137,8 @@ func (q *DBQuerier) FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inL
 		return FindLtreeInputRow{}, fmt.Errorf("query FindLtreeInput: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Text)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*TextArray)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.Text)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*pgtype.TextArray)(nil))
 
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (FindLtreeInputRow, error) {
 		vals := row.RawValues()

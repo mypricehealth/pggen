@@ -68,7 +68,7 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
 	}
 	fds := rows.FieldDescriptions()
 	{{- range $i, $col := $q.Outputs }}
-	{{ $q.EmitPlanScan $i $col}}
+	{{ $q.EmitPlanScan $i $col $.PkgPath }}
 	{{- end }}
 
 	return {{ $q.EmitCollectionFunc }}(rows, func(row pgx.CollectableRow) ({{ $q.EmitSingularResultType }}, error) {

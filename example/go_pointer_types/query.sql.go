@@ -107,7 +107,7 @@ func (q *DBQuerier) GenSeriesArr1(ctx context.Context) ([]int, error) {
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]int, error) {
 		vals := row.RawValues()
 		var item []int
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.ArrayAgg); err != nil {
 			return item, fmt.Errorf("scan GenSeriesArr1.array_agg: %w", err)
 		}
 		return item, nil
@@ -130,7 +130,7 @@ func (q *DBQuerier) GenSeriesArr(ctx context.Context) ([][]int, error) {
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]int, error) {
 		vals := row.RawValues()
 		var item []int
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.ArrayAgg); err != nil {
 			return item, fmt.Errorf("scan GenSeriesArr.array_agg: %w", err)
 		}
 		return item, nil

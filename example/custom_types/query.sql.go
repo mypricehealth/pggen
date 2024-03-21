@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jschaf/pggen/example/custom_types/mytype"
+	"github.com/mypricehealth/pggen/example/custom_types/mytype"
 )
 
 // Querier is a typesafe Go interface backed by SQL queries.
@@ -54,7 +54,7 @@ func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
 		return CustomTypesRow{}, fmt.Errorf("query CustomTypes: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*String)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*mytype.String)(nil))
 	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*CustomInt)(nil))
 
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (CustomTypesRow, error) {
@@ -107,7 +107,7 @@ func (q *DBQuerier) IntArray(ctx context.Context) ([][]int32, error) {
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]int32, error) {
 		vals := row.RawValues()
 		var item []int32
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.Ints); err != nil {
 			return item, fmt.Errorf("scan IntArray.ints: %w", err)
 		}
 		return item, nil

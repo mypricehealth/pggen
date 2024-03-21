@@ -101,7 +101,7 @@ func (q *DBQuerier) SearchScreenshots(ctx context.Context, params SearchScreensh
 		if err := plan0.Scan(vals[0], &item); err != nil {
 			return item, fmt.Errorf("scan SearchScreenshots.id: %w", err)
 		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
+		if err := plan1.Scan(vals[1], &item.Blocks); err != nil {
 			return item, fmt.Errorf("scan SearchScreenshots.blocks: %w", err)
 		}
 		return item, nil
@@ -136,7 +136,7 @@ func (q *DBQuerier) SearchScreenshotsOneCol(ctx context.Context, params SearchSc
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]Blocks, error) {
 		vals := row.RawValues()
 		var item []Blocks
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.Blocks); err != nil {
 			return item, fmt.Errorf("scan SearchScreenshotsOneCol.blocks: %w", err)
 		}
 		return item, nil

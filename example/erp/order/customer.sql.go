@@ -104,8 +104,8 @@ func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) 
 	}
 	fds := rows.FieldDescriptions()
 	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int32)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*Timestamptz)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*Numeric)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*pgtype.Timestamptz)(nil))
+	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*pgtype.Numeric)(nil))
 	plan3 := planScan(pgtype.TextCodec{}, fds[3], (**int32)(nil))
 
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindOrdersByCustomerRow, error) {
@@ -242,8 +242,8 @@ func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (
 	}
 	fds := rows.FieldDescriptions()
 	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int32)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*Timestamptz)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*Numeric)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*pgtype.Timestamptz)(nil))
+	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*pgtype.Numeric)(nil))
 	plan3 := planScan(pgtype.TextCodec{}, fds[3], (**int32)(nil))
 
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (InsertOrderRow, error) {

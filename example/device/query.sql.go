@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgtype.FlatArray[github.com/jackc/pgx/v5/pgtype"
 )
 
 // Querier is a typesafe Go interface backed by SQL queries.
@@ -74,9 +75,9 @@ FROM "user"
 WHERE id = $1;`
 
 type FindDevicesByUserRow struct {
-	ID       int                 `json:"id"`
-	Name     string              `json:"name"`
-	MacAddrs pgtype.MacaddrArray `json:"mac_addrs"`
+	ID       int                  `json:"id"`
+	Name     string               `json:"name"`
+	MacAddrs pgtype.MacaddrCodec] `json:"mac_addrs"`
 }
 
 // FindDevicesByUser implements Querier.FindDevicesByUser.
@@ -89,7 +90,7 @@ func (q *DBQuerier) FindDevicesByUser(ctx context.Context, id int) ([]FindDevice
 	fds := rows.FieldDescriptions()
 	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int)(nil))
 	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*string)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*MacaddrArray)(nil))
+	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*pgtype.MacaddrCodec])(nil))
 
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindDevicesByUserRow, error) {
 		vals := row.RawValues()
@@ -128,7 +129,7 @@ func (q *DBQuerier) CompositeUser(ctx context.Context) ([]CompositeUserRow, erro
 		return nil, fmt.Errorf("query CompositeUser: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Macaddr)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.Macaddr)(nil))
 	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*DeviceType)(nil))
 	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*User)(nil))
 

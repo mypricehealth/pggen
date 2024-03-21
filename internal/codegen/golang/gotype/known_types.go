@@ -92,7 +92,7 @@ var (
 // pgtype types prefixed with "pg".
 var (
 	PgBool             = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Bool", pg.Bool)
-	PgQChar            = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.QChar", pg.QChar)
+	PgQChar            = MustParseKnownType("byte", pg.QChar)
 	PgName             = MustParseKnownType("string", pg.Name)
 	PgInt8             = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Int8", pg.Int8)
 	PgInt2             = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Int2", pg.Int2)

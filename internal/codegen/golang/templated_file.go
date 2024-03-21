@@ -204,7 +204,7 @@ func (tq TemplatedQuery) isInlineParams() bool {
 
 // EmitPlanScan emits the variable that hold the pgtype.ScanPlan for a query
 // output.
-func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn) (string, error) {
+func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn, pkgPath string) (string, error) {
 	switch tq.ResultKind {
 	case ast.ResultKindExec:
 		return "", fmt.Errorf("cannot EmitPlanScanArgs for :exec query %s", tq.Name)
@@ -213,7 +213,7 @@ func (tq TemplatedQuery) EmitPlanScan(idx int, out TemplatedColumn) (string, err
 	default:
 		return "", fmt.Errorf("unhandled EmitPlanScanArgs type: %s", tq.ResultKind)
 	}
-	return fmt.Sprintf("plan%d := planScan(pgtype.TextCodec{}, fds[%d], (*%s)(nil))", idx, idx, out.Type.BaseName()), nil
+	return fmt.Sprintf("plan%d := planScan(pgtype.TextCodec{}, fds[%d], (*%s)(nil))", idx, idx, gotype.QualifyType(out.Type, pkgPath)), nil
 }
 
 // EmitScanColumn emits scan call for a single TemplatedColumn.
@@ -391,7 +391,7 @@ func (tq TemplatedQuery) EmitZeroResult() (string, error) {
 			return "nil", nil // nil pointer
 		}
 		switch typ {
-		case "int", "int32", "int64", "float32", "float64":
+		case "int", "int32", "int64", "float32", "float64", "uint", "uint32", "uint64":
 			return "0", nil
 		case "string":
 			return `""`, nil

@@ -2,10 +2,11 @@ package out
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
 	"testing"
 
-	"github.com/jschaf/pggen/internal/pgtest"
+	"github.com/stretchr/testify/require"
+
+	"github.com/mypricehealth/pggen/internal/pgtest"
 	"github.com/stretchr/testify/assert"
 )
 

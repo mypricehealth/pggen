@@ -82,7 +82,7 @@ func (q *DBQuerier) AlphaCompositeArray(ctx context.Context) ([]Alpha, error) {
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]Alpha, error) {
 		vals := row.RawValues()
 		var item []Alpha
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.Array); err != nil {
 			return item, fmt.Errorf("scan AlphaCompositeArray.array: %w", err)
 		}
 		return item, nil

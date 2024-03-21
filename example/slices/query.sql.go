@@ -56,7 +56,7 @@ func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]bool, error) {
 		vals := row.RawValues()
 		var item []bool
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.Bool); err != nil {
 			return item, fmt.Errorf("scan GetBools.bool: %w", err)
 		}
 		return item, nil
@@ -73,7 +73,7 @@ func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time
 		return nil, fmt.Errorf("query GetOneTimestamp: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**Time)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**time.Time)(nil))
 
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (*time.Time, error) {
 		vals := row.RawValues()
@@ -96,7 +96,7 @@ func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) (
 		return nil, fmt.Errorf("query GetManyTimestamptzs: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**Time)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**time.Time)(nil))
 
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (*time.Time, error) {
 		vals := row.RawValues()
@@ -119,7 +119,7 @@ func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([
 		return nil, fmt.Errorf("query GetManyTimestamps: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**Time)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**time.Time)(nil))
 
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (*time.Time, error) {
 		vals := row.RawValues()

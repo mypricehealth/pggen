@@ -2,13 +2,14 @@ package order
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jschaf/pggen/internal/pgtest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewQuerier_FindOrdersByCustomer(t *testing.T) {

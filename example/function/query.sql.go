@@ -67,7 +67,7 @@ func (q *DBQuerier) OutParams(ctx context.Context) ([]OutParamsRow, error) {
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (OutParamsRow, error) {
 		vals := row.RawValues()
 		var item OutParamsRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.Items); err != nil {
 			return item, fmt.Errorf("scan OutParams._items: %w", err)
 		}
 		if err := plan1.Scan(vals[1], &item); err != nil {

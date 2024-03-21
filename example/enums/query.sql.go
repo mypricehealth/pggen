@@ -100,7 +100,7 @@ func (q *DBQuerier) FindAllDevices(ctx context.Context) ([]FindAllDevicesRow, er
 		return nil, fmt.Errorf("query FindAllDevices: %w", err)
 	}
 	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Macaddr)(nil))
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.Macaddr)(nil))
 	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*DeviceType)(nil))
 
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindAllDevicesRow, error) {
@@ -144,7 +144,7 @@ func (q *DBQuerier) FindOneDeviceArray(ctx context.Context) ([]DeviceType, error
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]DeviceType, error) {
 		vals := row.RawValues()
 		var item []DeviceType
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.DeviceTypes); err != nil {
 			return item, fmt.Errorf("scan FindOneDeviceArray.device_types: %w", err)
 		}
 		return item, nil
@@ -168,7 +168,7 @@ func (q *DBQuerier) FindManyDeviceArray(ctx context.Context) ([][]DeviceType, er
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]DeviceType, error) {
 		vals := row.RawValues()
 		var item []DeviceType
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.DeviceTypes); err != nil {
 			return item, fmt.Errorf("scan FindManyDeviceArray.device_types: %w", err)
 		}
 		return item, nil
@@ -201,7 +201,7 @@ func (q *DBQuerier) FindManyDeviceArrayWithNum(ctx context.Context) ([]FindManyD
 		if err := plan0.Scan(vals[0], &item); err != nil {
 			return item, fmt.Errorf("scan FindManyDeviceArrayWithNum.num: %w", err)
 		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
+		if err := plan1.Scan(vals[1], &item.DeviceTypes); err != nil {
 			return item, fmt.Errorf("scan FindManyDeviceArrayWithNum.device_types: %w", err)
 		}
 		return item, nil

@@ -2,11 +2,12 @@ package ltree
 
 import (
 	"context"
+	"testing"
+
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jschaf/pggen/internal/pgtest"
+	"github.com/mypricehealth/pggen/internal/pgtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestQuerier(t *testing.T) {

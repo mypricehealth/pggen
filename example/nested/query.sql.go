@@ -74,7 +74,7 @@ func (q *DBQuerier) ArrayNested2(ctx context.Context) ([]ProductImageType, error
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]ProductImageType, error) {
 		vals := row.RawValues()
 		var item []ProductImageType
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.Images); err != nil {
 			return item, fmt.Errorf("scan ArrayNested2.images: %w", err)
 		}
 		return item, nil

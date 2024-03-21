@@ -76,7 +76,7 @@ func (q *DBQuerier) ParamArrayInt(ctx context.Context, ints []int) ([]int, error
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]int, error) {
 		vals := row.RawValues()
 		var item []int
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.Int8); err != nil {
 			return item, fmt.Errorf("scan ParamArrayInt.int8: %w", err)
 		}
 		return item, nil
@@ -142,7 +142,7 @@ func (q *DBQuerier) ParamNested2Array(ctx context.Context, images []ProductImage
 	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]ProductImageType, error) {
 		vals := row.RawValues()
 		var item []ProductImageType
-		if err := plan0.Scan(vals[0], &item); err != nil {
+		if err := plan0.Scan(vals[0], &item.ProductImageType); err != nil {
 			return item, fmt.Errorf("scan ParamNested2Array.product_image_type: %w", err)
 		}
 		return item, nil

@@ -2,11 +2,12 @@ package slices
 
 import (
 	"context"
-	"github.com/jschaf/pggen/internal/difftest"
-	"github.com/jschaf/pggen/internal/pgtest"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/mypricehealth/pggen/internal/difftest"
+	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewQuerier_GetBools(t *testing.T) {
