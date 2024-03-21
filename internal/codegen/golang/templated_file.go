@@ -24,7 +24,7 @@ type TemplatedFile struct {
 	GoPkg      string           // the name of the Go package to use for the "package foo" declaration
 	SourcePath string           // absolute path to source SQL file
 	Queries    []TemplatedQuery // the queries with all template information
-	Imports    []string         // Go imports
+	Imports    *ImportSet       // Go imports
 	// True if this file is the leader file. The leader defines common code used
 	// by all queries in the same directory. Only one leader per directory.
 	IsLeader bool
@@ -70,6 +70,19 @@ func (tf TemplatedFile) needsPgconnImport() bool {
 	for _, query := range tf.Queries {
 		if query.ResultKind == ast.ResultKindExec {
 			return true // :exec queries return pgconn.CommandTag
+		}
+	}
+	return false
+}
+
+func (tf TemplatedFile) needsPGXImport() bool {
+	if tf.IsLeader {
+		// Leader files define genericConn which uses pgx
+		return true
+	}
+	for _, query := range tf.Queries {
+		if query.ResultKind == ast.ResultKindRows {
+			return true // :rows queries return pgx.Rows
 		}
 	}
 	return false

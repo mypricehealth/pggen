@@ -1,8 +1,9 @@
 package golang
 
 import (
-	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 	"sort"
+
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 )
 
 // ImportSet contains a set of imports required by one Go file.
@@ -18,6 +19,12 @@ func NewImportSet() *ImportSet {
 // "github.com/mypricehealth/pggen/foo".
 func (s *ImportSet) AddPackage(p string) {
 	s.imports[p] = struct{}{}
+}
+
+// AddPackage removes a fully qualified package path from the set, like
+// "github.com/mypricehealth/pggen/foo".
+func (s *ImportSet) RemovePackage(p string) {
+	delete(s.imports, p)
 }
 
 // AddType adds all fully qualified package paths needed for type and any child

@@ -68,42 +68,24 @@ func (tm Templater) TemplateAll(files []codegen.QueryFile) ([]TemplatedFile, err
 	goQueryFiles[firstIndex].Declarers = allDeclarers.ListAll()
 
 	// Remove unneeded pgconn import if possible.
-	for i, file := range goQueryFiles {
-		if file.needsPgconnImport() {
-			continue
+	for _, file := range goQueryFiles {
+		if !file.needsPgconnImport() {
+			file.Imports.RemovePackage("github.com/jackc/pgx/v5/pgconn")
 		}
-		pgconnIdx := -1
-		imports := file.Imports
-		for i, pkg := range imports {
-			if pkg == "github.com/jackc/pgx/v5/pgconn" {
-				pgconnIdx = i
-				break
-			}
-		}
-		if pgconnIdx > -1 {
-			copy(imports[pgconnIdx:], imports[pgconnIdx+1:])
-			goQueryFiles[i].Imports = imports[:len(imports)-1]
+
+		if file.needsPGXImport() {
+			file.Imports.AddPackage("github.com/jackc/pgx/v5")
 		}
 	}
 
 	// Remove self imports.
-	for i, file := range goQueryFiles {
+	for _, file := range goQueryFiles {
 		selfPkg, err := gomod.GuessPackage(file.SourcePath)
 		if err != nil || selfPkg == "" {
 			continue // ignore error, assume it's not a self import
 		}
-		selfPkgIdx := -1
-		imports := file.Imports
-		for i, pkg := range file.Imports {
-			if pkg == selfPkg {
-				selfPkgIdx = i
-				break
-			}
-		}
-		if selfPkgIdx > -1 {
-			copy(imports[selfPkgIdx:], imports[selfPkgIdx+1:])
-			goQueryFiles[i].Imports = imports[:len(imports)-1]
-		}
+
+		file.Imports.RemovePackage(selfPkg)
 	}
 	return goQueryFiles, nil
 }
@@ -209,7 +191,7 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 		GoPkg:      tm.pkg,
 		SourcePath: file.SourcePath,
 		Queries:    queries,
-		Imports:    imports.SortedPackages(),
+		Imports:    imports,
 		IsLeader:   isLeader,
 	}, declarers, nil
 }
