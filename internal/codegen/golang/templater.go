@@ -76,6 +76,10 @@ func (tm Templater) TemplateAll(files []codegen.QueryFile) ([]TemplatedFile, err
 		if file.needsPGXImport() {
 			file.Imports.AddPackage("github.com/jackc/pgx/v5")
 		}
+
+		if file.needsPgtypeImport() {
+			file.Imports.AddPackage("github.com/jackc/pgx/v5/pgtype")
+		}
 	}
 
 	// Remove self imports.

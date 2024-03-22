@@ -81,8 +81,21 @@ func (tf TemplatedFile) needsPGXImport() bool {
 		return true
 	}
 	for _, query := range tf.Queries {
-		if query.ResultKind == ast.ResultKindRows {
-			return true // :rows queries return pgx.Rows
+		if query.ResultKind == ast.ResultKindRows || query.ResultKind == ast.ResultKindOne || query.ResultKind == ast.ResultKindMany {
+			return true
+		}
+	}
+	return false
+}
+
+func (tf TemplatedFile) needsPgtypeImport() bool {
+	if tf.IsLeader {
+		// Leader files define genericConn which uses pgx
+		return true
+	}
+	for _, query := range tf.Queries {
+		if query.ResultKind == ast.ResultKindOne || query.ResultKind == ast.ResultKindMany {
+			return true
 		}
 	}
 	return false
