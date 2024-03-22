@@ -29,7 +29,11 @@ func (s *ImportSet) RemovePackage(p string) {
 // AddType adds all fully qualified package paths needed for type and any child
 // types.
 func (s *ImportSet) AddType(typ gotype.Type) {
-	s.AddPackage(typ.Import())
+	importPath := typ.Import()
+	if importPath != "" {
+		s.AddPackage(typ.Import())
+	}
+
 	comp, ok := typ.(*gotype.CompositeType)
 	if !ok {
 		return

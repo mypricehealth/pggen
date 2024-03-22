@@ -46,17 +46,8 @@ func (q *DBQuerier) DomainOne(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("query DomainOne: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (string, error) {
-		vals := row.RawValues()
-		var item string
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan DomainOne.us_postal_code: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 }
 
 type scanCacheKey struct {

@@ -56,17 +56,8 @@ func (q *DBQuerier) CountAuthors(ctx context.Context) (*int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query CountAuthors: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**int)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (*int, error) {
-		vals := row.RawValues()
-		var item *int
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan CountAuthors.count: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
 }
 
 const findAuthorByIDSQL = `SELECT * FROM author WHERE author_id = $1;`
@@ -85,29 +76,8 @@ func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAut
 	if err != nil {
 		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int32)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*string)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*string)(nil))
-	plan3 := planScan(pgtype.TextCodec{}, fds[3], (**string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (FindAuthorByIDRow, error) {
-		vals := row.RawValues()
-		var item FindAuthorByIDRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan FindAuthorByID.author_id: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan FindAuthorByID.first_name: %w", err)
-		}
-		if err := plan2.Scan(vals[2], &item); err != nil {
-			return item, fmt.Errorf("scan FindAuthorByID.last_name: %w", err)
-		}
-		if err := plan3.Scan(vals[3], &item); err != nil {
-			return item, fmt.Errorf("scan FindAuthorByID.suffix: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindAuthorByIDRow])
 }
 
 const insertAuthorSQL = `INSERT INTO author (first_name, last_name)
@@ -121,17 +91,8 @@ func (q *DBQuerier) InsertAuthor(ctx context.Context, firstName string, lastName
 	if err != nil {
 		return 0, fmt.Errorf("query InsertAuthor: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int32)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (int32, error) {
-		vals := row.RawValues()
-		var item int32
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan InsertAuthor.author_id: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[int32])
 }
 
 const deleteAuthorsByFullNameSQL = `DELETE

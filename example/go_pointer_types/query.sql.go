@@ -58,17 +58,8 @@ func (q *DBQuerier) GenSeries1(ctx context.Context) (*int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeries1: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**int)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (*int, error) {
-		vals := row.RawValues()
-		var item *int
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan GenSeries1.n: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
 }
 
 const genSeriesSQL = `SELECT n
@@ -81,17 +72,8 @@ func (q *DBQuerier) GenSeries(ctx context.Context) ([]*int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeries: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**int)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (*int, error) {
-		vals := row.RawValues()
-		var item *int
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan GenSeries.n: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowTo[*int])
 }
 
 const genSeriesArr1SQL = `SELECT array_agg(n)
@@ -104,17 +86,8 @@ func (q *DBQuerier) GenSeriesArr1(ctx context.Context) ([]int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesArr1: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]int)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]int, error) {
-		vals := row.RawValues()
-		var item []int
-		if err := plan0.Scan(vals[0], &item.ArrayAgg); err != nil {
-			return item, fmt.Errorf("scan GenSeriesArr1.array_agg: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
 }
 
 const genSeriesArrSQL = `SELECT array_agg(n)
@@ -127,17 +100,8 @@ func (q *DBQuerier) GenSeriesArr(ctx context.Context) ([][]int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesArr: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]int)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]int, error) {
-		vals := row.RawValues()
-		var item []int
-		if err := plan0.Scan(vals[0], &item.ArrayAgg); err != nil {
-			return item, fmt.Errorf("scan GenSeriesArr.array_agg: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowTo[[]int])
 }
 
 const genSeriesStr1SQL = `SELECT n::text
@@ -151,17 +115,8 @@ func (q *DBQuerier) GenSeriesStr1(ctx context.Context) (*string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesStr1: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (*string, error) {
-		vals := row.RawValues()
-		var item *string
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan GenSeriesStr1.n: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
 }
 
 const genSeriesStrSQL = `SELECT n::text
@@ -174,17 +129,8 @@ func (q *DBQuerier) GenSeriesStr(ctx context.Context) ([]*string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesStr: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**string)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (*string, error) {
-		vals := row.RawValues()
-		var item *string
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan GenSeriesStr.n: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowTo[*string])
 }
 
 type scanCacheKey struct {

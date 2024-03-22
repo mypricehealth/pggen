@@ -54,17 +54,8 @@ func (q *DBQuerier) FindTopScienceChildren(ctx context.Context) ([]pgtype.Text, 
 	if err != nil {
 		return nil, fmt.Errorf("query FindTopScienceChildren: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.Text)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (pgtype.Text, error) {
-		vals := row.RawValues()
-		var item pgtype.Text
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan FindTopScienceChildren.path: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowTo[pgtype.Text])
 }
 
 const findTopScienceChildrenAggSQL = `SELECT array_agg(path)
@@ -78,17 +69,8 @@ func (q *DBQuerier) FindTopScienceChildrenAgg(ctx context.Context) (pgtype.TextA
 	if err != nil {
 		return TextArray{}, fmt.Errorf("query FindTopScienceChildrenAgg: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.TextArray)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (pgtype.TextArray, error) {
-		vals := row.RawValues()
-		var item pgtype.TextArray
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan FindTopScienceChildrenAgg.array_agg: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[pgtype.TextArray])
 }
 
 const insertSampleDataSQL = `INSERT INTO test
@@ -139,21 +121,8 @@ func (q *DBQuerier) FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inL
 	if err != nil {
 		return FindLtreeInputRow{}, fmt.Errorf("query FindLtreeInput: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.Text)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*pgtype.TextArray)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (FindLtreeInputRow, error) {
-		vals := row.RawValues()
-		var item FindLtreeInputRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan FindLtreeInput.ltree: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan FindLtreeInput.text_arr: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindLtreeInputRow])
 }
 
 type scanCacheKey struct {

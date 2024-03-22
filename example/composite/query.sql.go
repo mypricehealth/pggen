@@ -94,21 +94,8 @@ func (q *DBQuerier) SearchScreenshots(ctx context.Context, params SearchScreensh
 	if err != nil {
 		return nil, fmt.Errorf("query SearchScreenshots: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*[]Blocks)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (SearchScreenshotsRow, error) {
-		vals := row.RawValues()
-		var item SearchScreenshotsRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan SearchScreenshots.id: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item.Blocks); err != nil {
-			return item, fmt.Errorf("scan SearchScreenshots.blocks: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowToStructByName[SearchScreenshotsRow])
 }
 
 const searchScreenshotsOneColSQL = `SELECT
@@ -133,17 +120,8 @@ func (q *DBQuerier) SearchScreenshotsOneCol(ctx context.Context, params SearchSc
 	if err != nil {
 		return nil, fmt.Errorf("query SearchScreenshotsOneCol: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]Blocks)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]Blocks, error) {
-		vals := row.RawValues()
-		var item []Blocks
-		if err := plan0.Scan(vals[0], &item.Blocks); err != nil {
-			return item, fmt.Errorf("scan SearchScreenshotsOneCol.blocks: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowTo[[]Blocks])
 }
 
 const insertScreenshotBlocksSQL = `WITH screens AS (
@@ -168,25 +146,8 @@ func (q *DBQuerier) InsertScreenshotBlocks(ctx context.Context, screenshotID int
 	if err != nil {
 		return InsertScreenshotBlocksRow{}, fmt.Errorf("query InsertScreenshotBlocks: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*int)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (InsertScreenshotBlocksRow, error) {
-		vals := row.RawValues()
-		var item InsertScreenshotBlocksRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan InsertScreenshotBlocks.id: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan InsertScreenshotBlocks.screenshot_id: %w", err)
-		}
-		if err := plan2.Scan(vals[2], &item); err != nil {
-			return item, fmt.Errorf("scan InsertScreenshotBlocks.body: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertScreenshotBlocksRow])
 }
 
 const arraysInputSQL = `SELECT $1::arrays;`
@@ -198,17 +159,8 @@ func (q *DBQuerier) ArraysInput(ctx context.Context, arrays Arrays) (Arrays, err
 	if err != nil {
 		return Arrays{}, fmt.Errorf("query ArraysInput: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Arrays)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (Arrays, error) {
-		vals := row.RawValues()
-		var item Arrays
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan ArraysInput.arrays: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[Arrays])
 }
 
 const userEmailsSQL = `SELECT ('foo', 'bar@example.com')::user_email;`
@@ -220,17 +172,8 @@ func (q *DBQuerier) UserEmails(ctx context.Context) (UserEmail, error) {
 	if err != nil {
 		return UserEmail{}, fmt.Errorf("query UserEmails: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*UserEmail)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (UserEmail, error) {
-		vals := row.RawValues()
-		var item UserEmail
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan UserEmails.row: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[UserEmail])
 }
 
 type scanCacheKey struct {

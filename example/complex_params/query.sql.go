@@ -73,17 +73,8 @@ func (q *DBQuerier) ParamArrayInt(ctx context.Context, ints []int) ([]int, error
 	if err != nil {
 		return nil, fmt.Errorf("query ParamArrayInt: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]int)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]int, error) {
-		vals := row.RawValues()
-		var item []int
-		if err := plan0.Scan(vals[0], &item.Int8); err != nil {
-			return item, fmt.Errorf("scan ParamArrayInt.int8: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
 }
 
 const paramNested1SQL = `SELECT $1::dimensions;`
@@ -95,17 +86,8 @@ func (q *DBQuerier) ParamNested1(ctx context.Context, dimensions Dimensions) (Di
 	if err != nil {
 		return Dimensions{}, fmt.Errorf("query ParamNested1: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Dimensions)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (Dimensions, error) {
-		vals := row.RawValues()
-		var item Dimensions
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan ParamNested1.dimensions: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[Dimensions])
 }
 
 const paramNested2SQL = `SELECT $1::product_image_type;`
@@ -117,17 +99,8 @@ func (q *DBQuerier) ParamNested2(ctx context.Context, image ProductImageType) (P
 	if err != nil {
 		return ProductImageType{}, fmt.Errorf("query ParamNested2: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*ProductImageType)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (ProductImageType, error) {
-		vals := row.RawValues()
-		var item ProductImageType
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan ParamNested2.product_image_type: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[ProductImageType])
 }
 
 const paramNested2ArraySQL = `SELECT $1::product_image_type[];`
@@ -139,17 +112,8 @@ func (q *DBQuerier) ParamNested2Array(ctx context.Context, images []ProductImage
 	if err != nil {
 		return nil, fmt.Errorf("query ParamNested2Array: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]ProductImageType)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]ProductImageType, error) {
-		vals := row.RawValues()
-		var item []ProductImageType
-		if err := plan0.Scan(vals[0], &item.ProductImageType); err != nil {
-			return item, fmt.Errorf("scan ParamNested2Array.product_image_type: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
 }
 
 const paramNested3SQL = `SELECT $1::product_image_set_type;`
@@ -161,17 +125,8 @@ func (q *DBQuerier) ParamNested3(ctx context.Context, imageSet ProductImageSetTy
 	if err != nil {
 		return ProductImageSetType{}, fmt.Errorf("query ParamNested3: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*ProductImageSetType)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (ProductImageSetType, error) {
-		vals := row.RawValues()
-		var item ProductImageSetType
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan ParamNested3.product_image_set_type: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[ProductImageSetType])
 }
 
 type scanCacheKey struct {

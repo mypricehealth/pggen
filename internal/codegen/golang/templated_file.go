@@ -247,11 +247,10 @@ func (tq TemplatedQuery) EmitScanColumn(idx int, out TemplatedColumn) (string, e
 	sb := &strings.Builder{}
 
 	var scanInto = ""
-	switch out.Type.(type) {
-	case *gotype.ArrayType, *gotype.CompositeType:
-		scanInto = "&item." + out.UpperName
-	default:
+	if len(tq.Outputs) == 1 {
 		scanInto = "&item"
+	} else {
+		scanInto = "&item." + out.UpperName
 	}
 
 	_, _ = fmt.Fprintf(sb, "if err := plan%d.Scan(vals[%d], %s); err != nil {\n", idx, idx, scanInto)
@@ -326,6 +325,20 @@ func (tq TemplatedQuery) EmitCollectionFunc() (string, error) {
 		return "pgx.CollectRows", nil
 	case ast.ResultKindOne:
 		return "pgx.CollectExactlyOneRow", nil
+	default:
+		return "", fmt.Errorf("unhandled EmitCollectionFunc type: %s", tq.ResultKind)
+	}
+}
+
+func (tq TemplatedQuery) EmitRowToFunc() (string, error) {
+	switch tq.ResultKind {
+	case ast.ResultKindExec, ast.ResultKindSetup, ast.ResultKindRows, ast.ResultKindString:
+		return "", fmt.Errorf("cannot EmitCollectionFunc for %s query %s", tq.ResultKind, tq.Name)
+	case ast.ResultKindMany, ast.ResultKindOne:
+		if len(tq.Outputs) == 1 {
+			return "pgx.RowTo", nil
+		}
+		return "pgx.RowToStructByName", nil
 	default:
 		return "", fmt.Errorf("unhandled EmitCollectionFunc type: %s", tq.ResultKind)
 	}

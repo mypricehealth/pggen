@@ -71,17 +71,8 @@ func (q *DBQuerier) ArrayNested2(ctx context.Context) ([]ProductImageType, error
 	if err != nil {
 		return nil, fmt.Errorf("query ArrayNested2: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]ProductImageType)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]ProductImageType, error) {
-		vals := row.RawValues()
-		var item []ProductImageType
-		if err := plan0.Scan(vals[0], &item.Images); err != nil {
-			return item, fmt.Errorf("scan ArrayNested2.images: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
 }
 
 const nested3SQL = `SELECT
@@ -101,17 +92,8 @@ func (q *DBQuerier) Nested3(ctx context.Context) ([]ProductImageSetType, error) 
 	if err != nil {
 		return nil, fmt.Errorf("query Nested3: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*ProductImageSetType)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ProductImageSetType, error) {
-		vals := row.RawValues()
-		var item ProductImageSetType
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan Nested3.row: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowTo[ProductImageSetType])
 }
 
 type scanCacheKey struct {

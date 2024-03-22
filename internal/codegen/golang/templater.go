@@ -137,17 +137,18 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 		// Build inputs.
 		inputs := make([]TemplatedParam, len(query.Inputs))
 		for i, input := range query.Inputs {
-			goType, err := tm.resolver.Resolve(input.PgType /*nullable*/, false, pkgPath)
+			goType, err := tm.resolver.Resolve(input.PgType, input.IsOptional, pkgPath, false)
 			if err != nil {
 				return TemplatedFile{}, nil, err
 			}
+
 			imports.AddType(goType)
 			inputs[i] = TemplatedParam{
 				UpperName: tm.chooseUpperName(input.PgName, "UnnamedParam", i, len(query.Inputs)),
 				LowerName: tm.chooseLowerName(input.PgName, "unnamedParam", i, len(query.Inputs)),
 				QualType:  gotype.QualifyType(goType, pkgPath),
 				Type:      goType,
-				RawName:   query.Inputs[i],
+				RawName:   input,
 			}
 			ds := FindInputDeclarers(goType).ListAll()
 			declarers.AddAll(ds...)
@@ -156,7 +157,7 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 		// Build outputs.
 		outputs := make([]TemplatedColumn, len(query.Outputs))
 		for i, out := range query.Outputs {
-			goType, err := tm.resolver.Resolve(out.PgType, out.Nullable, pkgPath)
+			goType, err := tm.resolver.Resolve(out.PgType, out.Nullable, pkgPath, true)
 			if err != nil {
 				return TemplatedFile{}, nil, err
 			}

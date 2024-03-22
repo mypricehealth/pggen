@@ -78,17 +78,8 @@ func (q *DBQuerier) VoidTwo(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("query VoidTwo: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (string, error) {
-		vals := row.RawValues()
-		var item string
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan VoidTwo.name: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 }
 
 const voidThreeSQL = `SELECT void_fn(), 'foo' as foo, 'bar' as bar;`
@@ -105,21 +96,8 @@ func (q *DBQuerier) VoidThree(ctx context.Context) (VoidThreeRow, error) {
 	if err != nil {
 		return VoidThreeRow{}, fmt.Errorf("query VoidThree: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*string)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (VoidThreeRow, error) {
-		vals := row.RawValues()
-		var item VoidThreeRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan VoidThree.foo: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan VoidThree.bar: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[VoidThreeRow])
 }
 
 const voidThree2SQL = `SELECT 'foo' as foo, void_fn(), void_fn();`
@@ -131,17 +109,8 @@ func (q *DBQuerier) VoidThree2(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query VoidThree2: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*string)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (string, error) {
-		vals := row.RawValues()
-		var item string
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan VoidThree2.foo: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 type scanCacheKey struct {

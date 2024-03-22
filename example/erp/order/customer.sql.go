@@ -66,25 +66,8 @@ func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (
 	if err != nil {
 		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (**string)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (CreateTenantRow, error) {
-		vals := row.RawValues()
-		var item CreateTenantRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan CreateTenant.tenant_id: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan CreateTenant.rname: %w", err)
-		}
-		if err := plan2.Scan(vals[2], &item); err != nil {
-			return item, fmt.Errorf("scan CreateTenant.name: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
 }
 
 const findOrdersByCustomerSQL = `SELECT *
@@ -105,29 +88,8 @@ func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) 
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int32)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*pgtype.Timestamptz)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*pgtype.Numeric)(nil))
-	plan3 := planScan(pgtype.TextCodec{}, fds[3], (**int32)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindOrdersByCustomerRow, error) {
-		vals := row.RawValues()
-		var item FindOrdersByCustomerRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan FindOrdersByCustomer.order_id: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan FindOrdersByCustomer.order_date: %w", err)
-		}
-		if err := plan2.Scan(vals[2], &item); err != nil {
-			return item, fmt.Errorf("scan FindOrdersByCustomer.order_total: %w", err)
-		}
-		if err := plan3.Scan(vals[3], &item); err != nil {
-			return item, fmt.Errorf("scan FindOrdersByCustomer.customer_id: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
 }
 
 const findProductsInOrderSQL = `SELECT o.order_id, p.product_id, p.name
@@ -149,25 +111,8 @@ func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]F
 	if err != nil {
 		return nil, fmt.Errorf("query FindProductsInOrder: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**int32)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (**int32)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (**string)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindProductsInOrderRow, error) {
-		vals := row.RawValues()
-		var item FindProductsInOrderRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan FindProductsInOrder.order_id: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan FindProductsInOrder.product_id: %w", err)
-		}
-		if err := plan2.Scan(vals[2], &item); err != nil {
-			return item, fmt.Errorf("scan FindProductsInOrder.name: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
 }
 
 const insertCustomerSQL = `INSERT INTO customer (first_name, last_name, email)
@@ -194,29 +139,8 @@ func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerPar
 	if err != nil {
 		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int32)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*string)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*string)(nil))
-	plan3 := planScan(pgtype.TextCodec{}, fds[3], (*string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (InsertCustomerRow, error) {
-		vals := row.RawValues()
-		var item InsertCustomerRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan InsertCustomer.customer_id: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan InsertCustomer.first_name: %w", err)
-		}
-		if err := plan2.Scan(vals[2], &item); err != nil {
-			return item, fmt.Errorf("scan InsertCustomer.last_name: %w", err)
-		}
-		if err := plan3.Scan(vals[3], &item); err != nil {
-			return item, fmt.Errorf("scan InsertCustomer.email: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
 }
 
 const insertOrderSQL = `INSERT INTO orders (order_date, order_total, customer_id)
@@ -243,29 +167,8 @@ func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (
 	if err != nil {
 		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int32)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*pgtype.Timestamptz)(nil))
-	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*pgtype.Numeric)(nil))
-	plan3 := planScan(pgtype.TextCodec{}, fds[3], (**int32)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (InsertOrderRow, error) {
-		vals := row.RawValues()
-		var item InsertOrderRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan InsertOrder.order_id: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan InsertOrder.order_date: %w", err)
-		}
-		if err := plan2.Scan(vals[2], &item); err != nil {
-			return item, fmt.Errorf("scan InsertOrder.order_total: %w", err)
-		}
-		if err := plan3.Scan(vals[3], &item); err != nil {
-			return item, fmt.Errorf("scan InsertOrder.customer_id: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
 }
 
 type scanCacheKey struct {

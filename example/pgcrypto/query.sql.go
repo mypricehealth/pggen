@@ -67,21 +67,8 @@ func (q *DBQuerier) FindUser(ctx context.Context, email string) (FindUserRow, er
 	if err != nil {
 		return FindUserRow{}, fmt.Errorf("query FindUser: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*string)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (FindUserRow, error) {
-		vals := row.RawValues()
-		var item FindUserRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan FindUser.email: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan FindUser.pass: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindUserRow])
 }
 
 type scanCacheKey struct {

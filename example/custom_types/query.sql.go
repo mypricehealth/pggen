@@ -56,21 +56,8 @@ func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
 	if err != nil {
 		return CustomTypesRow{}, fmt.Errorf("query CustomTypes: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*mytype.String)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*CustomInt)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (CustomTypesRow, error) {
-		vals := row.RawValues()
-		var item CustomTypesRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan CustomTypes.?column?: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan CustomTypes.int8: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CustomTypesRow])
 }
 
 const customMyIntSQL = `SELECT '5'::my_int as int5;`
@@ -82,17 +69,8 @@ func (q *DBQuerier) CustomMyInt(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("query CustomMyInt: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*int)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (int, error) {
-		vals := row.RawValues()
-		var item int
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan CustomMyInt.int5: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[int])
 }
 
 const intArraySQL = `SELECT ARRAY ['5', '6', '7']::int[] as ints;`
@@ -104,17 +82,8 @@ func (q *DBQuerier) IntArray(ctx context.Context) ([][]int32, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query IntArray: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]int32)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]int32, error) {
-		vals := row.RawValues()
-		var item []int32
-		if err := plan0.Scan(vals[0], &item.Ints); err != nil {
-			return item, fmt.Errorf("scan IntArray.ints: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowTo[[]int32])
 }
 
 type scanCacheKey struct {

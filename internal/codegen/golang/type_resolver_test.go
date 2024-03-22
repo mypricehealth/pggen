@@ -169,7 +169,7 @@ func TestTypeResolver_Resolve(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resolver := NewTypeResolver(caser, tt.overrides)
-			got, err := resolver.Resolve(tt.pgType, tt.nullable, testPkgPath)
+			got, err := resolver.Resolve(tt.pgType, tt.nullable, testPkgPath, true)
 			if err != nil {
 				t.Fatal(err)
 			}

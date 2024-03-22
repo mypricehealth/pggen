@@ -102,21 +102,8 @@ func (q *DBQuerier) FindAllDevices(ctx context.Context) ([]FindAllDevicesRow, er
 	if err != nil {
 		return nil, fmt.Errorf("query FindAllDevices: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*pgtype.Macaddr)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*DeviceType)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindAllDevicesRow, error) {
-		vals := row.RawValues()
-		var item FindAllDevicesRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan FindAllDevices.mac: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item); err != nil {
-			return item, fmt.Errorf("scan FindAllDevices.type: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowToStructByName[FindAllDevicesRow])
 }
 
 const insertDeviceSQL = `INSERT INTO device (mac, type)
@@ -141,17 +128,8 @@ func (q *DBQuerier) FindOneDeviceArray(ctx context.Context) ([]DeviceType, error
 	if err != nil {
 		return nil, fmt.Errorf("query FindOneDeviceArray: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]DeviceType)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]DeviceType, error) {
-		vals := row.RawValues()
-		var item []DeviceType
-		if err := plan0.Scan(vals[0], &item.DeviceTypes); err != nil {
-			return item, fmt.Errorf("scan FindOneDeviceArray.device_types: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]DeviceType])
 }
 
 const findManyDeviceArraySQL = `SELECT enum_range('ipad'::device_type, 'iot'::device_type) AS device_types
@@ -165,17 +143,8 @@ func (q *DBQuerier) FindManyDeviceArray(ctx context.Context) ([][]DeviceType, er
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArray: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]DeviceType)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) ([]DeviceType, error) {
-		vals := row.RawValues()
-		var item []DeviceType
-		if err := plan0.Scan(vals[0], &item.DeviceTypes); err != nil {
-			return item, fmt.Errorf("scan FindManyDeviceArray.device_types: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowTo[[]DeviceType])
 }
 
 const findManyDeviceArrayWithNumSQL = `SELECT 1 AS num, enum_range('ipad'::device_type, 'iot'::device_type) AS device_types
@@ -194,21 +163,8 @@ func (q *DBQuerier) FindManyDeviceArrayWithNum(ctx context.Context) ([]FindManyD
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArrayWithNum: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (**int32)(nil))
-	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*[]DeviceType)(nil))
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindManyDeviceArrayWithNumRow, error) {
-		vals := row.RawValues()
-		var item FindManyDeviceArrayWithNumRow
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan FindManyDeviceArrayWithNum.num: %w", err)
-		}
-		if err := plan1.Scan(vals[1], &item.DeviceTypes); err != nil {
-			return item, fmt.Errorf("scan FindManyDeviceArrayWithNum.device_types: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectRows(rows, pgx.RowToStructByName[FindManyDeviceArrayWithNumRow])
 }
 
 const enumInsideCompositeSQL = `SELECT ROW('08:00:2b:01:02:03'::macaddr, 'phone'::device_type) ::device;`
@@ -220,17 +176,8 @@ func (q *DBQuerier) EnumInsideComposite(ctx context.Context) (Device, error) {
 	if err != nil {
 		return Device{}, fmt.Errorf("query EnumInsideComposite: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*Device)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (Device, error) {
-		vals := row.RawValues()
-		var item Device
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan EnumInsideComposite.row: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[Device])
 }
 
 type scanCacheKey struct {

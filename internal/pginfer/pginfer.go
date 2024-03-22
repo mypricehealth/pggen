@@ -44,6 +44,8 @@ type InputParam struct {
 	PgName string
 	// The postgres type of this param as reported by Postgres.
 	PgType pg.Type
+	// Whether the input parameter is optional
+	IsOptional bool
 }
 
 // OutputColumn is a single column output from a select query or returning
@@ -153,8 +155,8 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	}
 
 	// Validate.
-	if len(stmtDesc.ParamOIDs) != len(query.ParamNames) {
-		return nil, nil, fmt.Errorf("expected %d parameter types for query; got %d", len(query.ParamNames), len(stmtDesc.ParamOIDs))
+	if len(stmtDesc.ParamOIDs) != len(query.Params) {
+		return nil, nil, fmt.Errorf("expected %d parameter types for query; got %d", len(query.Params), len(stmtDesc.ParamOIDs))
 	}
 
 	// Build input params.
@@ -165,13 +167,17 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 			return nil, nil, fmt.Errorf("fetch oid types: %w", err)
 		}
 		for i, oid := range stmtDesc.ParamOIDs {
+			param := query.Params[i]
+
 			inputType, ok := types[uint32(oid)]
 			if !ok {
-				return nil, nil, fmt.Errorf("no postgres type name found for parameter %s with oid %d", query.ParamNames[i], oid)
+				return nil, nil, fmt.Errorf("no postgres type name found for parameter %s with oid %d", param.Name, oid)
 			}
+
 			inputParams = append(inputParams, InputParam{
-				PgName: query.ParamNames[i],
-				PgType: inputType,
+				PgName:     param.Name,
+				PgType:     inputType,
+				IsOptional: param.IsOptional,
 			})
 		}
 	}
@@ -252,8 +258,8 @@ func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgco
 }
 
 func createParamArgs(query *ast.SourceQuery) []interface{} {
-	args := make([]interface{}, len(query.ParamNames))
-	for i := range query.ParamNames {
+	args := make([]interface{}, len(query.Params))
+	for i := range query.Params {
 		args[i] = nil
 	}
 	return args

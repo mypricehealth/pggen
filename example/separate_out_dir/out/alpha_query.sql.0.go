@@ -57,17 +57,8 @@ func (q *DBQuerier) AlphaNested(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("query AlphaNested: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*string)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (string, error) {
-		vals := row.RawValues()
-		var item string
-		if err := plan0.Scan(vals[0], &item); err != nil {
-			return item, fmt.Errorf("scan AlphaNested.output: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 }
 
 const alphaCompositeArraySQL = `SELECT ARRAY[ROW('key')]::alpha[];`
@@ -79,17 +70,8 @@ func (q *DBQuerier) AlphaCompositeArray(ctx context.Context) ([]Alpha, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query AlphaCompositeArray: %w", err)
 	}
-	fds := rows.FieldDescriptions()
-	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*[]Alpha)(nil))
 
-	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) ([]Alpha, error) {
-		vals := row.RawValues()
-		var item []Alpha
-		if err := plan0.Scan(vals[0], &item.Array); err != nil {
-			return item, fmt.Errorf("scan AlphaCompositeArray.array: %w", err)
-		}
-		return item, nil
-	})
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]Alpha])
 }
 
 type scanCacheKey struct {
