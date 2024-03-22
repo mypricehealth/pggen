@@ -71,6 +71,7 @@ const (
 	ResultKindMany   ResultKind = ":many"
 	ResultKindOne    ResultKind = ":one"
 	ResultKindExec   ResultKind = ":exec"
+	ResultKindSetup  ResultKind = ":setup"
 	ResultKindRows   ResultKind = ":rows"
 	ResultKindString ResultKind = ":string"
 )

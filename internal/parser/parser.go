@@ -203,7 +203,7 @@ func (p *parser) errorExpected(pos gotok.Pos, msg string) {
 }
 
 // Regexp to extract query annotations that control output.
-var annotationRegexp = regexp.MustCompile(`name: ([a-zA-Z0-9_$]+)[ \t]+(:many|:one|:exec|:rows|:string)[ \t]*(.*)`)
+var nameAnnotationRegexp = regexp.MustCompile(`name:[ \t]([a-zA-Z0-9_$]+)[ \t]+(:many|:one|:exec|:setup|:rows|:string)[ \t]*(.*)`)
 
 func (p *parser) parseQuery() ast.Query {
 	if p.trace {
@@ -214,6 +214,8 @@ func (p *parser) parseQuery() ast.Query {
 	sql := &strings.Builder{}
 	pos := p.pos
 
+	hasAnyPGGenArg := false
+
 	names := make([]argPos, 0, 4) // all pggen.arg names in order, can be duplicated
 	for p.tok != token.Semicolon {
 		if p.tok == token.EOF || p.tok == token.Illegal {
@@ -222,6 +224,11 @@ func (p *parser) parseQuery() ast.Query {
 		}
 		hasPggenArg := strings.HasSuffix(p.lit, "pggen.arg(") ||
 			strings.HasSuffix(p.lit, "pggen.arg (")
+
+		if hasPggenArg {
+			hasAnyPGGenArg = true
+		}
+
 		if p.tok == token.QueryFragment && hasPggenArg {
 			arg, ok := p.parsePggenArg()
 			if !ok {
@@ -248,11 +255,18 @@ func (p *parser) parseQuery() ast.Query {
 		return &ast.BadQuery{From: pos, To: p.pos}
 	}
 	last := doc.List[len(doc.List)-1]
-	annotations := annotationRegexp.FindStringSubmatch(last.Text)
+	annotations := nameAnnotationRegexp.FindStringSubmatch(last.Text)
 	if annotations == nil {
 		p.error(pos, "no 'name: <name> :<type>' token found in comment before query; comment line: \""+last.Text+`"`)
 		return &ast.BadQuery{From: pos, To: p.pos}
 	}
+
+	resultKind := ast.ResultKind(annotations[2])
+	if resultKind == ast.ResultKindSetup && hasAnyPGGenArg {
+		p.error(pos, "queries with :setup result kind cannot contain pggen.arg")
+		return &ast.BadQuery{From: pos, To: p.pos}
+	}
+
 	args := annotations[3]
 	pragmas, err := parsePragmas(args)
 	if err != nil {
@@ -270,7 +284,7 @@ func (p *parser) parseQuery() ast.Query {
 		SourceSQL:   templateSQL,
 		PreparedSQL: preparedSQL,
 		ParamNames:  params,
-		ResultKind:  ast.ResultKind(annotations[2]),
+		ResultKind:  resultKind,
 		Pragmas:     pragmas,
 		Semi:        semi,
 	}

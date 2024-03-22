@@ -3,9 +3,10 @@ package pginfer
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgconn"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mypricehealth/pggen/internal/ast"
@@ -72,22 +73,31 @@ func NewInferrer(conn *pgx.Conn) *Inferrer {
 	}
 }
 
+func (inf *Inferrer) RunSetup(query string) (pgconn.CommandTag, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	return inf.conn.Exec(ctx, query)
+}
+
 func (inf *Inferrer) InferTypes(query *ast.SourceQuery) (TypedQuery, error) {
 	inputs, outputs, err := inf.prepareTypes(query)
 	if err != nil {
 		return TypedQuery{}, fmt.Errorf("infer output types for query: %w", err)
 	}
-	if query.ResultKind != ast.ResultKindExec && len(outputs) == 0 {
-		return TypedQuery{}, fmt.Errorf(
-			"query %s has incompatible result kind %s; the query doesn't return any columns; "+
-				"use :exec if query shouldn't return any columns",
-			query.Name, query.ResultKind)
-	}
-	if query.ResultKind != ast.ResultKindExec && countVoids(outputs) == len(outputs) {
-		return TypedQuery{}, fmt.Errorf(
-			"query %s has incompatible result kind %s; the query only has void columns; "+
-				"use :exec if query shouldn't return any columns",
-			query.Name, query.ResultKind)
+	if query.ResultKind != ast.ResultKindExec && query.ResultKind != ast.ResultKindSetup {
+		if len(outputs) == 0 {
+			return TypedQuery{}, fmt.Errorf(
+				"query %s has incompatible result kind %s; the query doesn't return any columns; "+
+					"use :exec if query shouldn't return any columns",
+				query.Name, query.ResultKind)
+		}
+		if countVoids(outputs) == len(outputs) {
+			return TypedQuery{}, fmt.Errorf(
+				"query %s has incompatible result kind %s; the query only has void columns; "+
+					"use :exec if query shouldn't return any columns",
+				query.Name, query.ResultKind)
+		}
 	}
 	doc := extractDoc(query)
 	return TypedQuery{
