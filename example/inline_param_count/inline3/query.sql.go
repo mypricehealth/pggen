@@ -3,13 +3,16 @@
 package inline3
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -29,7 +32,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -48,7 +51,7 @@ const countAuthorsSQL = `SELECT count(*) FROM author;`
 
 // CountAuthors implements Querier.CountAuthors.
 func (q *DBQuerier) CountAuthors(ctx context.Context) (*int, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "CountAuthors")
+	ctx = context.WithValue(ctx, QueryName{}, "CountAuthors")
 	rows, err := q.conn.Query(ctx, countAuthorsSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query CountAuthors: %w", err)
@@ -77,7 +80,7 @@ type FindAuthorByIDRow struct {
 
 // FindAuthorByID implements Querier.FindAuthorByID.
 func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAuthorByIDRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindAuthorByID")
+	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
 	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, authorID)
 	if err != nil {
 		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", err)
@@ -113,7 +116,7 @@ RETURNING author_id;`
 
 // InsertAuthor implements Querier.InsertAuthor.
 func (q *DBQuerier) InsertAuthor(ctx context.Context, firstName string, lastName string) (int32, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "InsertAuthor")
+	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
 	rows, err := q.conn.Query(ctx, insertAuthorSQL, firstName, lastName)
 	if err != nil {
 		return 0, fmt.Errorf("query InsertAuthor: %w", err)
@@ -139,7 +142,7 @@ WHERE first_name = $1
 
 // DeleteAuthorsByFullName implements Querier.DeleteAuthorsByFullName.
 func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, firstName string, lastName string, suffix string) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "DeleteAuthorsByFullName")
+	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, firstName, lastName, suffix)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", err)

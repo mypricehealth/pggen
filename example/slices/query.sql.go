@@ -3,14 +3,17 @@
 package slices
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"time"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -26,7 +29,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -45,7 +48,7 @@ const getBoolsSQL = `SELECT $1::boolean[];`
 
 // GetBools implements Querier.GetBools.
 func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GetBools")
+	ctx = context.WithValue(ctx, QueryName{}, "GetBools")
 	rows, err := q.conn.Query(ctx, getBoolsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetBools: %w", err)
@@ -67,7 +70,7 @@ const getOneTimestampSQL = `SELECT $1::timestamp;`
 
 // GetOneTimestamp implements Querier.GetOneTimestamp.
 func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time.Time, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GetOneTimestamp")
+	ctx = context.WithValue(ctx, QueryName{}, "GetOneTimestamp")
 	rows, err := q.conn.Query(ctx, getOneTimestampSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetOneTimestamp: %w", err)
@@ -90,7 +93,7 @@ FROM unnest($1::timestamptz[]);`
 
 // GetManyTimestamptzs implements Querier.GetManyTimestamptzs.
 func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) ([]*time.Time, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GetManyTimestamptzs")
+	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamptzs")
 	rows, err := q.conn.Query(ctx, getManyTimestamptzsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetManyTimestamptzs: %w", err)
@@ -113,7 +116,7 @@ FROM unnest($1::timestamp[]);`
 
 // GetManyTimestamps implements Querier.GetManyTimestamps.
 func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([]*time.Time, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GetManyTimestamps")
+	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamps")
 	rows, err := q.conn.Query(ctx, getManyTimestampsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetManyTimestamps: %w", err)

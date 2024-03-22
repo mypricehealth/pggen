@@ -1,12 +1,15 @@
 package golang
 
 import (
+	"bytes"
 	"fmt"
-	"github.com/mypricehealth/pggen/internal/errs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"text/template"
+
+	"github.com/mypricehealth/pggen/internal/errs"
+	"golang.org/x/tools/imports"
 )
 
 // Emitter writes a templated query file to a file.
@@ -101,8 +104,21 @@ func (em Emitter) emitQueryFile(outRelPath string, tf TemplatedFile) (mErr error
 	if err != nil {
 		return fmt.Errorf("open generated query file for writing: %w", err)
 	}
-	if err := em.tmpl.ExecuteTemplate(file, "gen_query", tf); err != nil {
+
+	bytesBuf := &bytes.Buffer{}
+	if err := em.tmpl.ExecuteTemplate(bytesBuf, "gen_query", tf); err != nil {
 		return fmt.Errorf("execute generated query file template %s: %w", out, err)
 	}
+
+	buf, err := imports.Process(out, bytesBuf.Bytes(), nil)
+	if err != nil {
+		return fmt.Errorf("format generated query file %s: %w", out, err)
+	}
+
+	_, err = file.Write(buf)
+	if err != nil {
+		return fmt.Errorf("write generated query file %s: %w", out, err)
+	}
+
 	return nil
 }

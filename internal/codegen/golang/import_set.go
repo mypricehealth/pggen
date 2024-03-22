@@ -1,9 +1,8 @@
 package golang
 
 import (
-	"sort"
-
 	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"golang.org/x/exp/maps"
 )
 
 // ImportSet contains a set of imports required by one Go file.
@@ -40,15 +39,8 @@ func (s *ImportSet) AddType(typ gotype.Type) {
 	}
 }
 
-// SortedPackages returns a new slice containing the sorted packages, suitable
+// Get returns a new slice containing the packages, suitable
 // for an import statement.
-func (s *ImportSet) SortedPackages() []string {
-	imps := make([]string, 0, len(s.imports))
-	for pkg := range s.imports {
-		if pkg != "" {
-			imps = append(imps, pkg)
-		}
-	}
-	sort.Strings(imps)
-	return imps
+func (s *ImportSet) Get() []string {
+	return maps.Keys(s.imports)
 }

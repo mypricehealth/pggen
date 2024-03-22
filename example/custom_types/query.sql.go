@@ -3,14 +3,17 @@
 package custom_types
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mypricehealth/pggen/example/custom_types/mytype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -24,7 +27,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -48,7 +51,7 @@ type CustomTypesRow struct {
 
 // CustomTypes implements Querier.CustomTypes.
 func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "CustomTypes")
+	ctx = context.WithValue(ctx, QueryName{}, "CustomTypes")
 	rows, err := q.conn.Query(ctx, customTypesSQL)
 	if err != nil {
 		return CustomTypesRow{}, fmt.Errorf("query CustomTypes: %w", err)
@@ -74,7 +77,7 @@ const customMyIntSQL = `SELECT '5'::my_int as int5;`
 
 // CustomMyInt implements Querier.CustomMyInt.
 func (q *DBQuerier) CustomMyInt(ctx context.Context) (int, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "CustomMyInt")
+	ctx = context.WithValue(ctx, QueryName{}, "CustomMyInt")
 	rows, err := q.conn.Query(ctx, customMyIntSQL)
 	if err != nil {
 		return 0, fmt.Errorf("query CustomMyInt: %w", err)
@@ -96,7 +99,7 @@ const intArraySQL = `SELECT ARRAY ['5', '6', '7']::int[] as ints;`
 
 // IntArray implements Querier.IntArray.
 func (q *DBQuerier) IntArray(ctx context.Context) ([][]int32, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "IntArray")
+	ctx = context.WithValue(ctx, QueryName{}, "IntArray")
 	rows, err := q.conn.Query(ctx, intArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query IntArray: %w", err)

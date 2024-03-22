@@ -3,13 +3,16 @@
 package pgcrypto
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -21,7 +24,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -41,7 +44,7 @@ VALUES ($1, crypt($2, gen_salt('bf')));`
 
 // CreateUser implements Querier.CreateUser.
 func (q *DBQuerier) CreateUser(ctx context.Context, email string, password string) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "CreateUser")
+	ctx = context.WithValue(ctx, QueryName{}, "CreateUser")
 	cmdTag, err := q.conn.Exec(ctx, createUserSQL, email, password)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query CreateUser: %w", err)
@@ -59,7 +62,7 @@ type FindUserRow struct {
 
 // FindUser implements Querier.FindUser.
 func (q *DBQuerier) FindUser(ctx context.Context, email string) (FindUserRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindUser")
+	ctx = context.WithValue(ctx, QueryName{}, "FindUser")
 	rows, err := q.conn.Query(ctx, findUserSQL, email)
 	if err != nil {
 		return FindUserRow{}, fmt.Errorf("query FindUser: %w", err)

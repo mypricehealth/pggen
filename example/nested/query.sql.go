@@ -3,13 +3,16 @@
 package nested
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -21,7 +24,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -63,7 +66,7 @@ const arrayNested2SQL = `SELECT
 
 // ArrayNested2 implements Querier.ArrayNested2.
 func (q *DBQuerier) ArrayNested2(ctx context.Context) ([]ProductImageType, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "ArrayNested2")
+	ctx = context.WithValue(ctx, QueryName{}, "ArrayNested2")
 	rows, err := q.conn.Query(ctx, arrayNested2SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query ArrayNested2: %w", err)
@@ -93,7 +96,7 @@ const nested3SQL = `SELECT
 
 // Nested3 implements Querier.Nested3.
 func (q *DBQuerier) Nested3(ctx context.Context) ([]ProductImageSetType, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "Nested3")
+	ctx = context.WithValue(ctx, QueryName{}, "Nested3")
 	rows, err := q.conn.Query(ctx, nested3SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query Nested3: %w", err)

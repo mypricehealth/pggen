@@ -6,7 +6,7 @@
 package {{.GoPkg}}
 
 import (
-{{ range $pkg := .Imports.SortedPackages }}	"{{$pkg}}"
+{{ range $pkg := .Imports.Get }}	"{{$pkg}}"
 {{ end -}}
 )
 

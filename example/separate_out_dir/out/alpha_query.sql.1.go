@@ -3,16 +3,18 @@
 package out
 
 import (
-	"sync"
 	"context"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const alphaSQL = `SELECT 'alpha' as output;`
 
 // Alpha implements Querier.Alpha.
 func (q *DBQuerier) Alpha(ctx context.Context) (string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "Alpha")
+	ctx = context.WithValue(ctx, QueryName{}, "Alpha")
 	rows, err := q.conn.Query(ctx, alphaSQL)
 	if err != nil {
 		return "", fmt.Errorf("query Alpha: %w", err)

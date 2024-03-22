@@ -3,13 +3,16 @@
 package order
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -31,7 +34,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -58,7 +61,7 @@ type CreateTenantRow struct {
 
 // CreateTenant implements Querier.CreateTenant.
 func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (CreateTenantRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "CreateTenant")
+	ctx = context.WithValue(ctx, QueryName{}, "CreateTenant")
 	rows, err := q.conn.Query(ctx, createTenantSQL, key, name)
 	if err != nil {
 		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", err)
@@ -97,7 +100,7 @@ type FindOrdersByCustomerRow struct {
 
 // FindOrdersByCustomer implements Querier.FindOrdersByCustomer.
 func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) ([]FindOrdersByCustomerRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindOrdersByCustomer")
+	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByCustomer")
 	rows, err := q.conn.Query(ctx, findOrdersByCustomerSQL, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", err)
@@ -141,7 +144,7 @@ type FindProductsInOrderRow struct {
 
 // FindProductsInOrder implements Querier.FindProductsInOrder.
 func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]FindProductsInOrderRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindProductsInOrder")
+	ctx = context.WithValue(ctx, QueryName{}, "FindProductsInOrder")
 	rows, err := q.conn.Query(ctx, findProductsInOrderSQL, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindProductsInOrder: %w", err)
@@ -186,7 +189,7 @@ type InsertCustomerRow struct {
 
 // InsertCustomer implements Querier.InsertCustomer.
 func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerParams) (InsertCustomerRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "InsertCustomer")
+	ctx = context.WithValue(ctx, QueryName{}, "InsertCustomer")
 	rows, err := q.conn.Query(ctx, insertCustomerSQL, params.FirstName, params.LastName, params.Email)
 	if err != nil {
 		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", err)
@@ -235,7 +238,7 @@ type InsertOrderRow struct {
 
 // InsertOrder implements Querier.InsertOrder.
 func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (InsertOrderRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "InsertOrder")
+	ctx = context.WithValue(ctx, QueryName{}, "InsertOrder")
 	rows, err := q.conn.Query(ctx, insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
 	if err != nil {
 		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", err)

@@ -3,13 +3,16 @@
 package out
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -25,7 +28,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -49,7 +52,7 @@ const alphaNestedSQL = `SELECT 'alpha_nested' as output;`
 
 // AlphaNested implements Querier.AlphaNested.
 func (q *DBQuerier) AlphaNested(ctx context.Context) (string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "AlphaNested")
+	ctx = context.WithValue(ctx, QueryName{}, "AlphaNested")
 	rows, err := q.conn.Query(ctx, alphaNestedSQL)
 	if err != nil {
 		return "", fmt.Errorf("query AlphaNested: %w", err)
@@ -71,7 +74,7 @@ const alphaCompositeArraySQL = `SELECT ARRAY[ROW('key')]::alpha[];`
 
 // AlphaCompositeArray implements Querier.AlphaCompositeArray.
 func (q *DBQuerier) AlphaCompositeArray(ctx context.Context) ([]Alpha, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "AlphaCompositeArray")
+	ctx = context.WithValue(ctx, QueryName{}, "AlphaCompositeArray")
 	rows, err := q.conn.Query(ctx, alphaCompositeArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query AlphaCompositeArray: %w", err)

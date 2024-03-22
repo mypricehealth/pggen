@@ -3,13 +3,16 @@
 package go_pointer_types
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -29,7 +32,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -50,7 +53,7 @@ LIMIT 1;`
 
 // GenSeries1 implements Querier.GenSeries1.
 func (q *DBQuerier) GenSeries1(ctx context.Context) (*int, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GenSeries1")
+	ctx = context.WithValue(ctx, QueryName{}, "GenSeries1")
 	rows, err := q.conn.Query(ctx, genSeries1SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeries1: %w", err)
@@ -73,7 +76,7 @@ FROM generate_series(0, 2) n;`
 
 // GenSeries implements Querier.GenSeries.
 func (q *DBQuerier) GenSeries(ctx context.Context) ([]*int, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GenSeries")
+	ctx = context.WithValue(ctx, QueryName{}, "GenSeries")
 	rows, err := q.conn.Query(ctx, genSeriesSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeries: %w", err)
@@ -96,7 +99,7 @@ FROM generate_series(0, 2) n;`
 
 // GenSeriesArr1 implements Querier.GenSeriesArr1.
 func (q *DBQuerier) GenSeriesArr1(ctx context.Context) ([]int, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GenSeriesArr1")
+	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr1")
 	rows, err := q.conn.Query(ctx, genSeriesArr1SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesArr1: %w", err)
@@ -119,7 +122,7 @@ FROM generate_series(0, 2) n;`
 
 // GenSeriesArr implements Querier.GenSeriesArr.
 func (q *DBQuerier) GenSeriesArr(ctx context.Context) ([][]int, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GenSeriesArr")
+	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr")
 	rows, err := q.conn.Query(ctx, genSeriesArrSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesArr: %w", err)
@@ -143,7 +146,7 @@ LIMIT 1;`
 
 // GenSeriesStr1 implements Querier.GenSeriesStr1.
 func (q *DBQuerier) GenSeriesStr1(ctx context.Context) (*string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GenSeriesStr1")
+	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr1")
 	rows, err := q.conn.Query(ctx, genSeriesStr1SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesStr1: %w", err)
@@ -166,7 +169,7 @@ FROM generate_series(0, 2) n;`
 
 // GenSeriesStr implements Querier.GenSeriesStr.
 func (q *DBQuerier) GenSeriesStr(ctx context.Context) ([]*string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "GenSeriesStr")
+	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr")
 	rows, err := q.conn.Query(ctx, genSeriesStrSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesStr: %w", err)

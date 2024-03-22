@@ -3,13 +3,16 @@
 package enums
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -33,7 +36,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -94,7 +97,7 @@ type FindAllDevicesRow struct {
 
 // FindAllDevices implements Querier.FindAllDevices.
 func (q *DBQuerier) FindAllDevices(ctx context.Context) ([]FindAllDevicesRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindAllDevices")
+	ctx = context.WithValue(ctx, QueryName{}, "FindAllDevices")
 	rows, err := q.conn.Query(ctx, findAllDevicesSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindAllDevices: %w", err)
@@ -121,7 +124,7 @@ VALUES ($1, $2);`
 
 // InsertDevice implements Querier.InsertDevice.
 func (q *DBQuerier) InsertDevice(ctx context.Context, mac pgtype.Macaddr, typePg DeviceType) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "InsertDevice")
+	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, typePg)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", err)
@@ -133,7 +136,7 @@ const findOneDeviceArraySQL = `SELECT enum_range(NULL::device_type) AS device_ty
 
 // FindOneDeviceArray implements Querier.FindOneDeviceArray.
 func (q *DBQuerier) FindOneDeviceArray(ctx context.Context) ([]DeviceType, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindOneDeviceArray")
+	ctx = context.WithValue(ctx, QueryName{}, "FindOneDeviceArray")
 	rows, err := q.conn.Query(ctx, findOneDeviceArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOneDeviceArray: %w", err)
@@ -157,7 +160,7 @@ SELECT enum_range(NULL::device_type) AS device_types;`
 
 // FindManyDeviceArray implements Querier.FindManyDeviceArray.
 func (q *DBQuerier) FindManyDeviceArray(ctx context.Context) ([][]DeviceType, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindManyDeviceArray")
+	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArray")
 	rows, err := q.conn.Query(ctx, findManyDeviceArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArray: %w", err)
@@ -186,7 +189,7 @@ type FindManyDeviceArrayWithNumRow struct {
 
 // FindManyDeviceArrayWithNum implements Querier.FindManyDeviceArrayWithNum.
 func (q *DBQuerier) FindManyDeviceArrayWithNum(ctx context.Context) ([]FindManyDeviceArrayWithNumRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindManyDeviceArrayWithNum")
+	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArrayWithNum")
 	rows, err := q.conn.Query(ctx, findManyDeviceArrayWithNumSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArrayWithNum: %w", err)
@@ -212,7 +215,7 @@ const enumInsideCompositeSQL = `SELECT ROW('08:00:2b:01:02:03'::macaddr, 'phone'
 
 // EnumInsideComposite implements Querier.EnumInsideComposite.
 func (q *DBQuerier) EnumInsideComposite(ctx context.Context) (Device, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "EnumInsideComposite")
+	ctx = context.WithValue(ctx, QueryName{}, "EnumInsideComposite")
 	rows, err := q.conn.Query(ctx, enumInsideCompositeSQL)
 	if err != nil {
 		return Device{}, fmt.Errorf("query EnumInsideComposite: %w", err)

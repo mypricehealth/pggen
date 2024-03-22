@@ -3,13 +3,16 @@
 package composite
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -27,7 +30,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -86,7 +89,7 @@ type SearchScreenshotsRow struct {
 
 // SearchScreenshots implements Querier.SearchScreenshots.
 func (q *DBQuerier) SearchScreenshots(ctx context.Context, params SearchScreenshotsParams) ([]SearchScreenshotsRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "SearchScreenshots")
+	ctx = context.WithValue(ctx, QueryName{}, "SearchScreenshots")
 	rows, err := q.conn.Query(ctx, searchScreenshotsSQL, params.Body, params.Limit, params.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("query SearchScreenshots: %w", err)
@@ -125,7 +128,7 @@ type SearchScreenshotsOneColParams struct {
 
 // SearchScreenshotsOneCol implements Querier.SearchScreenshotsOneCol.
 func (q *DBQuerier) SearchScreenshotsOneCol(ctx context.Context, params SearchScreenshotsOneColParams) ([][]Blocks, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "SearchScreenshotsOneCol")
+	ctx = context.WithValue(ctx, QueryName{}, "SearchScreenshotsOneCol")
 	rows, err := q.conn.Query(ctx, searchScreenshotsOneColSQL, params.Body, params.Limit, params.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("query SearchScreenshotsOneCol: %w", err)
@@ -160,7 +163,7 @@ type InsertScreenshotBlocksRow struct {
 
 // InsertScreenshotBlocks implements Querier.InsertScreenshotBlocks.
 func (q *DBQuerier) InsertScreenshotBlocks(ctx context.Context, screenshotID int, body string) (InsertScreenshotBlocksRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "InsertScreenshotBlocks")
+	ctx = context.WithValue(ctx, QueryName{}, "InsertScreenshotBlocks")
 	rows, err := q.conn.Query(ctx, insertScreenshotBlocksSQL, screenshotID, body)
 	if err != nil {
 		return InsertScreenshotBlocksRow{}, fmt.Errorf("query InsertScreenshotBlocks: %w", err)
@@ -190,7 +193,7 @@ const arraysInputSQL = `SELECT $1::arrays;`
 
 // ArraysInput implements Querier.ArraysInput.
 func (q *DBQuerier) ArraysInput(ctx context.Context, arrays Arrays) (Arrays, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "ArraysInput")
+	ctx = context.WithValue(ctx, QueryName{}, "ArraysInput")
 	rows, err := q.conn.Query(ctx, arraysInputSQL, q.types.newArraysInit(arrays))
 	if err != nil {
 		return Arrays{}, fmt.Errorf("query ArraysInput: %w", err)
@@ -212,7 +215,7 @@ const userEmailsSQL = `SELECT ('foo', 'bar@example.com')::user_email;`
 
 // UserEmails implements Querier.UserEmails.
 func (q *DBQuerier) UserEmails(ctx context.Context) (UserEmail, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "UserEmails")
+	ctx = context.WithValue(ctx, QueryName{}, "UserEmails")
 	rows, err := q.conn.Query(ctx, userEmailsSQL)
 	if err != nil {
 		return UserEmail{}, fmt.Errorf("query UserEmails: %w", err)

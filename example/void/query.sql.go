@@ -3,13 +3,16 @@
 package void
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -27,7 +30,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -46,7 +49,7 @@ const voidOnlySQL = `SELECT void_fn();`
 
 // VoidOnly implements Querier.VoidOnly.
 func (q *DBQuerier) VoidOnly(ctx context.Context) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidOnly")
+	ctx = context.WithValue(ctx, QueryName{}, "VoidOnly")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlySQL)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnly: %w", err)
@@ -58,7 +61,7 @@ const voidOnlyTwoParamsSQL = `SELECT void_fn_two_params($1, 'text');`
 
 // VoidOnlyTwoParams implements Querier.VoidOnlyTwoParams.
 func (q *DBQuerier) VoidOnlyTwoParams(ctx context.Context, id int32) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidOnlyTwoParams")
+	ctx = context.WithValue(ctx, QueryName{}, "VoidOnlyTwoParams")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlyTwoParamsSQL, id)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnlyTwoParams: %w", err)
@@ -70,7 +73,7 @@ const voidTwoSQL = `SELECT void_fn(), 'foo' as name;`
 
 // VoidTwo implements Querier.VoidTwo.
 func (q *DBQuerier) VoidTwo(ctx context.Context) (string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidTwo")
+	ctx = context.WithValue(ctx, QueryName{}, "VoidTwo")
 	rows, err := q.conn.Query(ctx, voidTwoSQL)
 	if err != nil {
 		return "", fmt.Errorf("query VoidTwo: %w", err)
@@ -97,7 +100,7 @@ type VoidThreeRow struct {
 
 // VoidThree implements Querier.VoidThree.
 func (q *DBQuerier) VoidThree(ctx context.Context) (VoidThreeRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidThree")
+	ctx = context.WithValue(ctx, QueryName{}, "VoidThree")
 	rows, err := q.conn.Query(ctx, voidThreeSQL)
 	if err != nil {
 		return VoidThreeRow{}, fmt.Errorf("query VoidThree: %w", err)
@@ -123,7 +126,7 @@ const voidThree2SQL = `SELECT 'foo' as foo, void_fn(), void_fn();`
 
 // VoidThree2 implements Querier.VoidThree2.
 func (q *DBQuerier) VoidThree2(ctx context.Context) ([]string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidThree2")
+	ctx = context.WithValue(ctx, QueryName{}, "VoidThree2")
 	rows, err := q.conn.Query(ctx, voidThree2SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query VoidThree2: %w", err)

@@ -3,13 +3,16 @@
 package domain
 
 import (
-	"sync"
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -19,7 +22,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -38,7 +41,7 @@ const domainOneSQL = `SELECT '90210'::us_postal_code;`
 
 // DomainOne implements Querier.DomainOne.
 func (q *DBQuerier) DomainOne(ctx context.Context) (string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "DomainOne")
+	ctx = context.WithValue(ctx, QueryName{}, "DomainOne")
 	rows, err := q.conn.Query(ctx, domainOneSQL)
 	if err != nil {
 		return "", fmt.Errorf("query DomainOne: %w", err)

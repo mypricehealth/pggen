@@ -5,9 +5,14 @@ package pg
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -34,7 +39,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn // underlying Postgres transport to use
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -105,24 +110,46 @@ type FindEnumTypesRow struct {
 
 // FindEnumTypes implements Querier.FindEnumTypes.
 func (q *DBQuerier) FindEnumTypes(ctx context.Context, oids []uint32) ([]FindEnumTypesRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindEnumTypes")
+	ctx = context.WithValue(ctx, QueryName{}, "FindEnumTypes")
 	rows, err := q.conn.Query(ctx, findEnumTypesSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindEnumTypes: %w", err)
 	}
-	defer rows.Close()
-	items := []FindEnumTypesRow{}
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*uint32)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*string)(nil))
+	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*[]int)(nil))
+	plan3 := planScan(pgtype.TextCodec{}, fds[3], (*[]float32)(nil))
+	plan4 := planScan(pgtype.TextCodec{}, fds[4], (*[]string)(nil))
+	plan5 := planScan(pgtype.TextCodec{}, fds[5], (*byte)(nil))
+	plan6 := planScan(pgtype.TextCodec{}, fds[6], (*string)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindEnumTypesRow, error) {
+		vals := row.RawValues()
 		var item FindEnumTypesRow
-		if err := rows.Scan(&item.OID, &item.TypeName, &item.ChildOIDs, &item.Orders, &item.Labels, &item.TypeKind, &item.DefaultExpr); err != nil {
-			return nil, fmt.Errorf("scan FindEnumTypes row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindEnumTypes.oid: %w", err)
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindEnumTypes rows: %w", err)
-	}
-	return items, err
+		if err := plan1.Scan(vals[1], &item); err != nil {
+			return item, fmt.Errorf("scan FindEnumTypes.type_name: %w", err)
+		}
+		if err := plan2.Scan(vals[2], &item.ChildOIDs); err != nil {
+			return item, fmt.Errorf("scan FindEnumTypes.child_oids: %w", err)
+		}
+		if err := plan3.Scan(vals[3], &item.Orders); err != nil {
+			return item, fmt.Errorf("scan FindEnumTypes.orders: %w", err)
+		}
+		if err := plan4.Scan(vals[4], &item.Labels); err != nil {
+			return item, fmt.Errorf("scan FindEnumTypes.labels: %w", err)
+		}
+		if err := plan5.Scan(vals[5], &item); err != nil {
+			return item, fmt.Errorf("scan FindEnumTypes.type_kind: %w", err)
+		}
+		if err := plan6.Scan(vals[6], &item); err != nil {
+			return item, fmt.Errorf("scan FindEnumTypes.default_expr: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const findArrayTypesSQL = `SELECT
@@ -163,24 +190,34 @@ type FindArrayTypesRow struct {
 
 // FindArrayTypes implements Querier.FindArrayTypes.
 func (q *DBQuerier) FindArrayTypes(ctx context.Context, oids []uint32) ([]FindArrayTypesRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindArrayTypes")
+	ctx = context.WithValue(ctx, QueryName{}, "FindArrayTypes")
 	rows, err := q.conn.Query(ctx, findArrayTypesSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindArrayTypes: %w", err)
 	}
-	defer rows.Close()
-	items := []FindArrayTypesRow{}
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*uint32)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*string)(nil))
+	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*uint32)(nil))
+	plan3 := planScan(pgtype.TextCodec{}, fds[3], (*byte)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindArrayTypesRow, error) {
+		vals := row.RawValues()
 		var item FindArrayTypesRow
-		if err := rows.Scan(&item.OID, &item.TypeName, &item.ElemOID, &item.TypeKind); err != nil {
-			return nil, fmt.Errorf("scan FindArrayTypes row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindArrayTypes.oid: %w", err)
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindArrayTypes rows: %w", err)
-	}
-	return items, err
+		if err := plan1.Scan(vals[1], &item); err != nil {
+			return item, fmt.Errorf("scan FindArrayTypes.type_name: %w", err)
+		}
+		if err := plan2.Scan(vals[2], &item); err != nil {
+			return item, fmt.Errorf("scan FindArrayTypes.elem_oid: %w", err)
+		}
+		if err := plan3.Scan(vals[3], &item); err != nil {
+			return item, fmt.Errorf("scan FindArrayTypes.type_kind: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const findCompositeTypesSQL = `WITH table_cols AS (
@@ -214,36 +251,62 @@ WHERE typ.oid = ANY ($1::oid[])
   AND typ.typtype = 'c';`
 
 type FindCompositeTypesRow struct {
-	TableTypeName string   `json:"table_type_name"`
-	TableTypeOID  uint32   `json:"table_type_oid"`
-	TableName     string   `json:"table_name"`
-	ColNames      []string `json:"col_names"`
-	ColOIDs       []int    `json:"col_oids"`
-	ColOrders     []int    `json:"col_orders"`
-	ColNotNulls   []bool   `json:"col_not_nulls"`
-	ColTypeNames  []string `json:"col_type_names"`
+	TableTypeName string                 `json:"table_type_name"`
+	TableTypeOID  uint32                 `json:"table_type_oid"`
+	TableName     string                 `json:"table_name"`
+	ColNames      []string               `json:"col_names"`
+	ColOIDs       []int                  `json:"col_oids"`
+	ColOrders     []int                  `json:"col_orders"`
+	ColNotNulls   pgtype.FlatArray[bool] `json:"col_not_nulls"`
+	ColTypeNames  []string               `json:"col_type_names"`
 }
 
 // FindCompositeTypes implements Querier.FindCompositeTypes.
 func (q *DBQuerier) FindCompositeTypes(ctx context.Context, oids []uint32) ([]FindCompositeTypesRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindCompositeTypes")
+	ctx = context.WithValue(ctx, QueryName{}, "FindCompositeTypes")
 	rows, err := q.conn.Query(ctx, findCompositeTypesSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindCompositeTypes: %w", err)
 	}
-	defer rows.Close()
-	items := []FindCompositeTypesRow{}
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*string)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*uint32)(nil))
+	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*string)(nil))
+	plan3 := planScan(pgtype.TextCodec{}, fds[3], (*[]string)(nil))
+	plan4 := planScan(pgtype.TextCodec{}, fds[4], (*[]int)(nil))
+	plan5 := planScan(pgtype.TextCodec{}, fds[5], (*[]int)(nil))
+	plan6 := planScan(pgtype.TextCodec{}, fds[6], (*pgtype.FlatArray[bool])(nil))
+	plan7 := planScan(pgtype.TextCodec{}, fds[7], (*[]string)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindCompositeTypesRow, error) {
+		vals := row.RawValues()
 		var item FindCompositeTypesRow
-		if err := rows.Scan(&item.TableTypeName, &item.TableTypeOID, &item.TableName, &item.ColNames, &item.ColOIDs, &item.ColOrders, &item.ColNotNulls, &item.ColTypeNames); err != nil {
-			return nil, fmt.Errorf("scan FindCompositeTypes row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindCompositeTypes.table_type_name: %w", err)
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindCompositeTypes rows: %w", err)
-	}
-	return items, err
+		if err := plan1.Scan(vals[1], &item); err != nil {
+			return item, fmt.Errorf("scan FindCompositeTypes.table_type_oid: %w", err)
+		}
+		if err := plan2.Scan(vals[2], &item); err != nil {
+			return item, fmt.Errorf("scan FindCompositeTypes.table_name: %w", err)
+		}
+		if err := plan3.Scan(vals[3], &item.ColNames); err != nil {
+			return item, fmt.Errorf("scan FindCompositeTypes.col_names: %w", err)
+		}
+		if err := plan4.Scan(vals[4], &item.ColOIDs); err != nil {
+			return item, fmt.Errorf("scan FindCompositeTypes.col_oids: %w", err)
+		}
+		if err := plan5.Scan(vals[5], &item.ColOrders); err != nil {
+			return item, fmt.Errorf("scan FindCompositeTypes.col_orders: %w", err)
+		}
+		if err := plan6.Scan(vals[6], &item); err != nil {
+			return item, fmt.Errorf("scan FindCompositeTypes.col_not_nulls: %w", err)
+		}
+		if err := plan7.Scan(vals[7], &item.ColTypeNames); err != nil {
+			return item, fmt.Errorf("scan FindCompositeTypes.col_type_names: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const findDescendantOIDsSQL = `WITH RECURSIVE oid_descs(oid) AS (
@@ -276,24 +339,22 @@ FROM oid_descs;`
 
 // FindDescendantOIDs implements Querier.FindDescendantOIDs.
 func (q *DBQuerier) FindDescendantOIDs(ctx context.Context, oids []uint32) ([]uint32, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindDescendantOIDs")
+	ctx = context.WithValue(ctx, QueryName{}, "FindDescendantOIDs")
 	rows, err := q.conn.Query(ctx, findDescendantOIDsSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindDescendantOIDs: %w", err)
 	}
-	defer rows.Close()
-	items := []uint32{}
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*uint32)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (uint32, error) {
+		vals := row.RawValues()
 		var item uint32
-		if err := rows.Scan(&item); err != nil {
-			return nil, fmt.Errorf("scan FindDescendantOIDs row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindDescendantOIDs.oid: %w", err)
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindDescendantOIDs rows: %w", err)
-	}
-	return items, err
+		return item, nil
+	})
 }
 
 const findOIDByNameSQL = `SELECT oid
@@ -304,13 +365,22 @@ LIMIT 1;`
 
 // FindOIDByName implements Querier.FindOIDByName.
 func (q *DBQuerier) FindOIDByName(ctx context.Context, name string) (uint32, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindOIDByName")
-	row := q.conn.QueryRow(ctx, findOIDByNameSQL, name)
-	var item uint32
-	if err := row.Scan(&item); err != nil {
-		return item, fmt.Errorf("query FindOIDByName: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "FindOIDByName")
+	rows, err := q.conn.Query(ctx, findOIDByNameSQL, name)
+	if err != nil {
+		return 0, fmt.Errorf("query FindOIDByName: %w", err)
 	}
-	return item, nil
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*uint32)(nil))
+
+	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (uint32, error) {
+		vals := row.RawValues()
+		var item uint32
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindOIDByName.oid: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const findOIDNameSQL = `SELECT typname AS name
@@ -319,13 +389,22 @@ WHERE oid = $1;`
 
 // FindOIDName implements Querier.FindOIDName.
 func (q *DBQuerier) FindOIDName(ctx context.Context, oid uint32) (string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindOIDName")
-	row := q.conn.QueryRow(ctx, findOIDNameSQL, oid)
-	var item string
-	if err := row.Scan(&item); err != nil {
-		return item, fmt.Errorf("query FindOIDName: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "FindOIDName")
+	rows, err := q.conn.Query(ctx, findOIDNameSQL, oid)
+	if err != nil {
+		return "", fmt.Errorf("query FindOIDName: %w", err)
 	}
-	return item, nil
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*string)(nil))
+
+	return pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (string, error) {
+		vals := row.RawValues()
+		var item string
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindOIDName.name: %w", err)
+		}
+		return item, nil
+	})
 }
 
 const findOIDNamesSQL = `SELECT oid, typname AS name, typtype AS kind
@@ -340,22 +419,83 @@ type FindOIDNamesRow struct {
 
 // FindOIDNames implements Querier.FindOIDNames.
 func (q *DBQuerier) FindOIDNames(ctx context.Context, oid []uint32) ([]FindOIDNamesRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindOIDNames")
+	ctx = context.WithValue(ctx, QueryName{}, "FindOIDNames")
 	rows, err := q.conn.Query(ctx, findOIDNamesSQL, oid)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOIDNames: %w", err)
 	}
-	defer rows.Close()
-	items := []FindOIDNamesRow{}
-	for rows.Next() {
+	fds := rows.FieldDescriptions()
+	plan0 := planScan(pgtype.TextCodec{}, fds[0], (*uint32)(nil))
+	plan1 := planScan(pgtype.TextCodec{}, fds[1], (*string)(nil))
+	plan2 := planScan(pgtype.TextCodec{}, fds[2], (*byte)(nil))
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (FindOIDNamesRow, error) {
+		vals := row.RawValues()
 		var item FindOIDNamesRow
-		if err := rows.Scan(&item.OID, &item.Name, &item.Kind); err != nil {
-			return nil, fmt.Errorf("scan FindOIDNames row: %w", err)
+		if err := plan0.Scan(vals[0], &item); err != nil {
+			return item, fmt.Errorf("scan FindOIDNames.oid: %w", err)
 		}
-		items = append(items, item)
+		if err := plan1.Scan(vals[1], &item); err != nil {
+			return item, fmt.Errorf("scan FindOIDNames.name: %w", err)
+		}
+		if err := plan2.Scan(vals[2], &item); err != nil {
+			return item, fmt.Errorf("scan FindOIDNames.kind: %w", err)
+		}
+		return item, nil
+	})
+}
+
+type scanCacheKey struct {
+	oid      uint32
+	format   int16
+	typeName string
+}
+
+var (
+	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
+	plansMu sync.RWMutex
+)
+
+func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindOIDNames rows: %w", err)
+	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return plan
+}
+
+type ptrScanner[T any] struct {
+	basePlan pgtype.ScanPlan
+}
+
+func (s ptrScanner[T]) Scan(src []byte, dst any) error {
+	if src == nil {
+		return nil
 	}
-	return items, err
+	d := dst.(**T)
+	*d = new(T)
+	return s.basePlan.Scan(src, *d)
+}
+
+func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	basePlan := planScan(codec, fd, target)
+	ptrPlan := ptrScanner[T]{basePlan}
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return ptrPlan
 }
