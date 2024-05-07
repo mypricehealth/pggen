@@ -90,6 +90,8 @@ var _ = addTypeToRegister("blocks")
 
 var _ = addTypeToRegister("user_email")
 
+var _ = addTypeToRegister("_blocks")
+
 const searchScreenshotsSQL = `SELECT
   ss.id,
   array_agg(bl) AS blocks

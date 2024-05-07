@@ -71,10 +71,13 @@ func (a ArrayTranscoderDeclarer) DedupeKey() string {
 }
 
 func (a ArrayTranscoderDeclarer) Declare(string) (string, error) {
-	return "", nil
-
 	sb := &strings.Builder{}
 	funcName := NameArrayTranscoderFunc(a.typ)
+
+	sb.WriteString("var _ = addTypeToRegister(\"")
+	sb.WriteString(a.typ.PgArray.Name)
+	sb.WriteString("\")\n")
+	return sb.String(), nil
 
 	// Doc comment
 	sb.WriteString("// ")

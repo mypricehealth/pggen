@@ -67,6 +67,8 @@ func addTypeToRegister(typ string) struct{} {
 
 var _ = addTypeToRegister("alpha")
 
+var _ = addTypeToRegister("_alpha")
+
 const alphaNestedSQL = `SELECT 'alpha_nested' as output;`
 
 // AlphaNested implements Querier.AlphaNested.

@@ -81,6 +81,8 @@ var _ = addTypeToRegister("product_image_set_type")
 
 var _ = addTypeToRegister("product_image_type")
 
+var _ = addTypeToRegister("_product_image_type")
+
 const arrayNested2SQL = `SELECT
   ARRAY [
     ROW ('img2', ROW (22, 22)::dimensions)::product_image_type,

@@ -91,6 +91,8 @@ func addTypeToRegister(typ string) struct{} {
 
 var _ = addTypeToRegister("device")
 
+var _ = addTypeToRegister("_device_type")
+
 const findAllDevicesSQL = `SELECT mac, type
 FROM device;`
 

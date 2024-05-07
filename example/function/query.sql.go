@@ -70,6 +70,8 @@ var _ = addTypeToRegister("list_item")
 
 var _ = addTypeToRegister("list_stats")
 
+var _ = addTypeToRegister("_list_item")
+
 const outParamsSQL = `SELECT * FROM out_params();`
 
 type OutParamsRow struct {
