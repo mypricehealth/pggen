@@ -2,9 +2,10 @@ package golang
 
 import (
 	"fmt"
-	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 	"strconv"
 	"strings"
+
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 )
 
 // NameArrayTranscoderFunc returns the function name that creates a
@@ -70,6 +71,8 @@ func (a ArrayTranscoderDeclarer) DedupeKey() string {
 }
 
 func (a ArrayTranscoderDeclarer) Declare(string) (string, error) {
+	return "", nil
+
 	sb := &strings.Builder{}
 	funcName := NameArrayTranscoderFunc(a.typ)
 
@@ -135,6 +138,8 @@ func (a ArrayInitDeclarer) DedupeKey() string {
 }
 
 func (a ArrayInitDeclarer) Declare(string) (string, error) {
+	return "", nil
+
 	funcName := NameArrayInitFunc(a.typ)
 	sb := &strings.Builder{}
 	sb.Grow(256)
@@ -187,6 +192,8 @@ func (a ArrayRawDeclarer) DedupeKey() string {
 }
 
 func (a ArrayRawDeclarer) Declare(pkgPath string) (string, error) {
+	return "", nil
+
 	funcName := NameArrayRawFunc(a.typ)
 	sb := &strings.Builder{}
 	sb.Grow(256)

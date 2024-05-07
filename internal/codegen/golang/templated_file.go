@@ -182,11 +182,7 @@ func (tq TemplatedQuery) EmitParamNames() string {
 	appendParam := func(sb *strings.Builder, typ gotype.Type, name string) {
 		switch typ := gotype.UnwrapNestedType(typ).(type) {
 		case *gotype.CompositeType:
-			sb.WriteString("q.types.")
-			sb.WriteString(NameCompositeInitFunc(typ))
-			sb.WriteString("(")
 			sb.WriteString(name)
-			sb.WriteString(")")
 		case *gotype.ArrayType:
 			if gotype.IsPgxSupportedArray(typ) {
 				sb.WriteString(name)
@@ -194,11 +190,7 @@ func (tq TemplatedQuery) EmitParamNames() string {
 			}
 			switch gotype.UnwrapNestedType(typ.Elem).(type) {
 			case *gotype.CompositeType, *gotype.EnumType:
-				sb.WriteString("q.types.")
-				sb.WriteString(NameArrayInitFunc(typ))
-				sb.WriteString("(")
 				sb.WriteString(name)
-				sb.WriteString(")")
 			default:
 				sb.WriteString(name)
 			}
