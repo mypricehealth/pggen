@@ -58,6 +58,31 @@ type ProductImageType struct {
 	Dimensions Dimensions `json:"dimensions"`
 }
 
+// RegisterTypes should be run in config.AfterConnect to load custom types
+func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
+	for _, typ := range typesToRegister {
+		dt, err := conn.LoadType(ctx, typ)
+		if err != nil {
+			return err
+		}
+		conn.TypeMap().RegisterType(dt)
+	}
+	return nil
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}
+
+var _ = addTypeToRegister("dimensions")
+
+var _ = addTypeToRegister("product_image_set_type")
+
+var _ = addTypeToRegister("product_image_type")
+
 const arrayNested2SQL = `SELECT
   ARRAY [
     ROW ('img2', ROW (22, 22)::dimensions)::product_image_type,

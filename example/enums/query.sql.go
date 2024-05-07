@@ -58,22 +58,6 @@ type Device struct {
 	Type DeviceType       `json:"type"`
 }
 
-// newDeviceTypeEnum creates a new pgtype.ValueTranscoder for the
-// Postgres enum type 'device_type'.
-func newDeviceTypeEnum() pgtype.ValueTranscoder {
-	return pgtype.NewEnumType(
-		"device_type",
-		[]string{
-			string(DeviceTypeUndefined),
-			string(DeviceTypePhone),
-			string(DeviceTypeLaptop),
-			string(DeviceTypeIpad),
-			string(DeviceTypeDesktop),
-			string(DeviceTypeIot),
-		},
-	)
-}
-
 // DeviceType represents the Postgres enum "device_type".
 type DeviceType string
 
@@ -87,6 +71,27 @@ const (
 )
 
 func (d DeviceType) String() string { return string(d) }
+
+// RegisterTypes should be run in config.AfterConnect to load custom types
+func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
+	for _, typ := range typesToRegister {
+		dt, err := conn.LoadType(ctx, typ)
+		if err != nil {
+			return err
+		}
+		conn.TypeMap().RegisterType(dt)
+	}
+	return nil
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}
+
+var _ = addTypeToRegister("device")
 
 const findAllDevicesSQL = `SELECT mac, type
 FROM device;`

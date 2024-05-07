@@ -49,6 +49,29 @@ type ListStats struct {
 	Val2 []*int32 `json:"val2"`
 }
 
+// RegisterTypes should be run in config.AfterConnect to load custom types
+func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
+	for _, typ := range typesToRegister {
+		dt, err := conn.LoadType(ctx, typ)
+		if err != nil {
+			return err
+		}
+		conn.TypeMap().RegisterType(dt)
+	}
+	return nil
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}
+
+var _ = addTypeToRegister("list_item")
+
+var _ = addTypeToRegister("list_stats")
+
 const outParamsSQL = `SELECT * FROM out_params();`
 
 type OutParamsRow struct {

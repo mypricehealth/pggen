@@ -49,6 +49,25 @@ func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{conn: conn}
 }
 
+// RegisterTypes should be run in config.AfterConnect to load custom types
+func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
+	for _, typ := range typesToRegister {
+		dt, err := conn.LoadType(ctx, typ)
+		if err != nil {
+			return err
+		}
+		conn.TypeMap().RegisterType(dt)
+	}
+	return nil
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}
+
 const createTenantSQL = `INSERT INTO tenant (tenant_id, name)
 VALUES (base36_decode($1::text)::tenant_id, $2::text)
 RETURNING *;`

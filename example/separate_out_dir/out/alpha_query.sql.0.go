@@ -48,6 +48,27 @@ type Alpha struct {
 	Key *string `json:"key"`
 }
 
+// RegisterTypes should be run in config.AfterConnect to load custom types
+func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
+	for _, typ := range typesToRegister {
+		dt, err := conn.LoadType(ctx, typ)
+		if err != nil {
+			return err
+		}
+		conn.TypeMap().RegisterType(dt)
+	}
+	return nil
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}
+
+var _ = addTypeToRegister("alpha")
+
 const alphaNestedSQL = `SELECT 'alpha_nested' as output;`
 
 // AlphaNested implements Querier.AlphaNested.

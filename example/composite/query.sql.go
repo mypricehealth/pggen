@@ -66,6 +66,31 @@ type UserEmail struct {
 	Email pgtype.Text `json:"email"`
 }
 
+// RegisterTypes should be run in config.AfterConnect to load custom types
+func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
+	for _, typ := range typesToRegister {
+		dt, err := conn.LoadType(ctx, typ)
+		if err != nil {
+			return err
+		}
+		conn.TypeMap().RegisterType(dt)
+	}
+	return nil
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}
+
+var _ = addTypeToRegister("arrays")
+
+var _ = addTypeToRegister("blocks")
+
+var _ = addTypeToRegister("user_email")
+
 const searchScreenshotsSQL = `SELECT
   ss.id,
   array_agg(bl) AS blocks
@@ -155,7 +180,7 @@ const arraysInputSQL = `SELECT $1::arrays;`
 // ArraysInput implements Querier.ArraysInput.
 func (q *DBQuerier) ArraysInput(ctx context.Context, arrays Arrays) (Arrays, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ArraysInput")
-	rows, err := q.conn.Query(ctx, arraysInputSQL, q.types.newArraysInit(arrays))
+	rows, err := q.conn.Query(ctx, arraysInputSQL, arrays)
 	if err != nil {
 		return Arrays{}, fmt.Errorf("query ArraysInput: %w", err)
 	}
