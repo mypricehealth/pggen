@@ -5,6 +5,7 @@ package device
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -28,7 +29,7 @@ type Querier interface {
 
 	InsertUser(ctx context.Context, userID int, name string) (pgconn.CommandTag, error)
 
-	InsertDevice(ctx context.Context, mac pgtype.Macaddr, owner int) (pgconn.CommandTag, error)
+	InsertDevice(ctx context.Context, mac net.HardwareAddr, owner int) (pgconn.CommandTag, error)
 }
 
 var _ Querier = &DBQuerier{}
@@ -77,9 +78,9 @@ FROM "user"
 WHERE id = $1;`
 
 type FindDevicesByUserRow struct {
-	ID       int                              `json:"id"`
-	Name     string                           `json:"name"`
-	MacAddrs pgtype.FlatArray[pgtype.Macaddr] `json:"mac_addrs"`
+	ID       int                                `json:"id"`
+	Name     string                             `json:"name"`
+	MacAddrs pgtype.FlatArray[net.HardwareAddr] `json:"mac_addrs"`
 }
 
 // FindDevicesByUser implements Querier.FindDevicesByUser.
@@ -101,9 +102,9 @@ FROM device d
   LEFT JOIN "user" u ON u.id = d.owner;`
 
 type CompositeUserRow struct {
-	Mac  pgtype.Macaddr `json:"mac"`
-	Type DeviceType     `json:"type"`
-	User User           `json:"user"`
+	Mac  net.HardwareAddr `json:"mac"`
+	Type DeviceType       `json:"type"`
+	User User             `json:"user"`
 }
 
 // CompositeUser implements Querier.CompositeUser.
@@ -178,7 +179,7 @@ const insertDeviceSQL = `INSERT INTO device (mac, owner)
 VALUES ($1, $2);`
 
 // InsertDevice implements Querier.InsertDevice.
-func (q *DBQuerier) InsertDevice(ctx context.Context, mac pgtype.Macaddr, owner int) (pgconn.CommandTag, error) {
+func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, owner int) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, owner)
 	if err != nil {

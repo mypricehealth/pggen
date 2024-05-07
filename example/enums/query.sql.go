@@ -5,6 +5,7 @@ package enums
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -18,7 +19,7 @@ type QueryName struct{}
 type Querier interface {
 	FindAllDevices(ctx context.Context) ([]FindAllDevicesRow, error)
 
-	InsertDevice(ctx context.Context, mac pgtype.Macaddr, typePg DeviceType) (pgconn.CommandTag, error)
+	InsertDevice(ctx context.Context, mac net.HardwareAddr, typePg DeviceType) (pgconn.CommandTag, error)
 
 	// Select an array of all device_type enum values.
 	FindOneDeviceArray(ctx context.Context) ([]DeviceType, error)
@@ -53,8 +54,8 @@ func NewQuerier(conn genericConn) *DBQuerier {
 
 // Device represents the Postgres composite type "device".
 type Device struct {
-	Mac  pgtype.Macaddr `json:"mac"`
-	Type DeviceType     `json:"type"`
+	Mac  net.HardwareAddr `json:"mac"`
+	Type DeviceType       `json:"type"`
 }
 
 // newDeviceTypeEnum creates a new pgtype.ValueTranscoder for the
@@ -91,8 +92,8 @@ const findAllDevicesSQL = `SELECT mac, type
 FROM device;`
 
 type FindAllDevicesRow struct {
-	Mac  pgtype.Macaddr `json:"mac"`
-	Type DeviceType     `json:"type"`
+	Mac  net.HardwareAddr `json:"mac"`
+	Type DeviceType       `json:"type"`
 }
 
 // FindAllDevices implements Querier.FindAllDevices.
@@ -110,7 +111,7 @@ const insertDeviceSQL = `INSERT INTO device (mac, type)
 VALUES ($1, $2);`
 
 // InsertDevice implements Querier.InsertDevice.
-func (q *DBQuerier) InsertDevice(ctx context.Context, mac pgtype.Macaddr, typePg DeviceType) (pgconn.CommandTag, error) {
+func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, typePg DeviceType) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, typePg)
 	if err != nil {
