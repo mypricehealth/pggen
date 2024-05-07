@@ -3,12 +3,13 @@ package gotype
 import (
 	"bytes"
 	"fmt"
-	"github.com/mypricehealth/pggen/internal/casing"
-	"github.com/mypricehealth/pggen/internal/pg"
 	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/mypricehealth/pggen/internal/casing"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 // Type is a Go type.
@@ -207,6 +208,10 @@ func ParseOpaqueType(qualType string, pgType pg.Type) (Type, error) {
 	}
 	idx := bytes.LastIndexByte(bs, '.')
 	name := string(bs[idx+1:])
+	if genericIdx := bytes.IndexByte(bs, '['); genericIdx != -1 {
+		idx = bytes.LastIndexByte(bs[:genericIdx], '.')
+		name = string(bs[idx+1:])
+	}
 	var typ Type = &OpaqueType{Name: name}
 	// On array types, the PgType goes on the Array. In all other cases, it
 	// goes on the OpaqueType.

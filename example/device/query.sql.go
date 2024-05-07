@@ -5,11 +5,11 @@ package device
 import (
 	"context"
 	"fmt"
+	"sync"
+
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5"
-	"sync"
-	"github.com/jackc/pgx/v5/pgtype.FlatArray[github.com/jackc/pgx/v5/pgtype"
 )
 
 type QueryName struct{}
@@ -34,7 +34,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -77,9 +77,9 @@ FROM "user"
 WHERE id = $1;`
 
 type FindDevicesByUserRow struct {
-	ID       int                  `json:"id"`
-	Name     string               `json:"name"`
-	MacAddrs pgtype.MacaddrCodec] `json:"mac_addrs"`
+	ID       int                              `json:"id"`
+	Name     string                           `json:"name"`
+	MacAddrs pgtype.FlatArray[pgtype.Macaddr] `json:"mac_addrs"`
 }
 
 // FindDevicesByUser implements Querier.FindDevicesByUser.
