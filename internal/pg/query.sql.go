@@ -5,7 +5,6 @@ package pg
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -327,59 +326,4 @@ func (q *DBQuerier) FindOIDNames(ctx context.Context, oid []uint32) ([]FindOIDNa
 	}
 
 	return pgx.CollectRows(rows, pgx.RowToStructByName[FindOIDNamesRow])
-}
-
-type scanCacheKey struct {
-	oid      uint32
-	format   int16
-	typeName string
-}
-
-var (
-	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
-	plansMu sync.RWMutex
-)
-
-func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return plan
-}
-
-type ptrScanner[T any] struct {
-	basePlan pgtype.ScanPlan
-}
-
-func (s ptrScanner[T]) Scan(src []byte, dst any) error {
-	if src == nil {
-		return nil
-	}
-	d := dst.(**T)
-	*d = new(T)
-	return s.basePlan.Scan(src, *d)
-}
-
-func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	basePlan := planScan(codec, fd, target)
-	ptrPlan := ptrScanner[T]{basePlan}
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return ptrPlan
 }

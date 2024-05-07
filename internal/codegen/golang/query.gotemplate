@@ -85,7 +85,7 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
 {{- end }}
 {{- end -}}
 {{- "\n" -}}
-{{ if .IsLeader }}
+{{ if false }}
 type scanCacheKey struct {
 	oid      uint32
 	format   int16
