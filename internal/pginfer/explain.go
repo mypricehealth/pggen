@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/kirk-anchor/pggen/internal/ast"
 )
 
 // PlanType is the top-level node plan type that Postgres plans for executing

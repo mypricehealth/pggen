@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/kirk-anchor/pggen/internal/codegen/golang/gotype"
 )
 
 func NameEnumTranscoderFunc(typ *gotype.EnumType) string {

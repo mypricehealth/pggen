@@ -1,7 +1,7 @@
 package golang
 
 import (
-	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/kirk-anchor/pggen/internal/codegen/golang/gotype"
 	"golang.org/x/exp/maps"
 )
 
@@ -15,13 +15,13 @@ func NewImportSet() *ImportSet {
 }
 
 // AddPackage adds a fully qualified package path to the set, like
-// "github.com/mypricehealth/pggen/foo".
+// "github.com/kirk-anchor/pggen/foo".
 func (s *ImportSet) AddPackage(p string) {
 	s.imports[p] = struct{}{}
 }
 
 // AddPackage removes a fully qualified package path from the set, like
-// "github.com/mypricehealth/pggen/foo".
+// "github.com/kirk-anchor/pggen/foo".
 func (s *ImportSet) RemovePackage(p string) {
 	delete(s.imports, p)
 }

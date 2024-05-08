@@ -1,8 +1,9 @@
 package pg
 
 import (
-	"github.com/mypricehealth/pggen/internal/pg/pgoid"
 	"strconv"
+
+	"github.com/kirk-anchor/pggen/internal/pg/pgoid"
 )
 
 // Type is a Postgres type.

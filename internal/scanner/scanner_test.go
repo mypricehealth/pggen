@@ -1,10 +1,11 @@
 package scanner
 
 import (
-	"github.com/mypricehealth/pggen/internal/token"
-	"github.com/stretchr/testify/assert"
 	gotok "go/token"
 	"testing"
+
+	"github.com/kirk-anchor/pggen/internal/token"
+	"github.com/stretchr/testify/assert"
 )
 
 func newlineCount(s string) int {

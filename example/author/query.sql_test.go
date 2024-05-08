@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/mypricehealth/pggen/internal/ptrs"
+	"github.com/kirk-anchor/pggen/internal/ptrs"
 	"github.com/stretchr/testify/require"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/kirk-anchor/pggen/internal/pgtest"
 	"github.com/stretchr/testify/assert"
 )
 

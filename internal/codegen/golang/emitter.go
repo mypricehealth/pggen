@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"text/template"
 
-	"github.com/mypricehealth/pggen/internal/errs"
+	"github.com/kirk-anchor/pggen/internal/errs"
 	"golang.org/x/tools/imports"
 )
 

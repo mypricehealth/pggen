@@ -7,11 +7,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/mypricehealth/pggen/internal/ast"
-	"github.com/mypricehealth/pggen/internal/difftest"
-	"github.com/mypricehealth/pggen/internal/pg"
-	"github.com/mypricehealth/pggen/internal/pgtest"
-	"github.com/mypricehealth/pggen/internal/texts"
+	"github.com/kirk-anchor/pggen/internal/ast"
+	"github.com/kirk-anchor/pggen/internal/difftest"
+	"github.com/kirk-anchor/pggen/internal/pg"
+	"github.com/kirk-anchor/pggen/internal/pgtest"
+	"github.com/kirk-anchor/pggen/internal/texts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

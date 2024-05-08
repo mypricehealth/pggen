@@ -3,10 +3,11 @@ package scanner
 import (
 	"bytes"
 	"fmt"
-	"github.com/mypricehealth/pggen/internal/token"
 	gotok "go/token"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/kirk-anchor/pggen/internal/token"
 )
 
 const (

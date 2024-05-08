@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/mypricehealth/pggen/example/custom_types/mytype"
+	"github.com/kirk-anchor/pggen/example/custom_types/mytype"
 )
 
 type QueryName struct{}

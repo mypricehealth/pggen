@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mypricehealth/pggen/internal/ast"
-	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
-	"github.com/mypricehealth/pggen/internal/pginfer"
+	"github.com/kirk-anchor/pggen/internal/ast"
+	"github.com/kirk-anchor/pggen/internal/codegen/golang/gotype"
+	"github.com/kirk-anchor/pggen/internal/pginfer"
 )
 
 // TemplatedPackage is all templated files in a pggen invocation. The templated

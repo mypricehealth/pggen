@@ -1,4 +1,4 @@
-module github.com/mypricehealth/pggen
+module github.com/kirk-anchor/pggen
 
 go 1.21.5
 

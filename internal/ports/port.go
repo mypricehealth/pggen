@@ -1,8 +1,9 @@
 package ports
 
 import (
-	"github.com/mypricehealth/pggen/internal/errs"
 	"net"
+
+	"github.com/kirk-anchor/pggen/internal/errs"
 )
 
 // Port is a port.

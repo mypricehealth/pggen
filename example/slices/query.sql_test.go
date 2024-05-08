@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mypricehealth/pggen/internal/difftest"
-	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/kirk-anchor/pggen/internal/difftest"
+	"github.com/kirk-anchor/pggen/internal/pgtest"
 	"github.com/stretchr/testify/require"
 )
 

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mypricehealth/pggen"
-	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/kirk-anchor/pggen"
+	"github.com/kirk-anchor/pggen/internal/pgtest"
 	"github.com/stretchr/testify/assert"
 )
 

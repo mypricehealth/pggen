@@ -3,11 +3,12 @@ package golang
 import (
 	_ "embed"
 	"fmt"
-	"github.com/mypricehealth/pggen/internal/casing"
-	"github.com/mypricehealth/pggen/internal/codegen"
 	"path/filepath"
 	"sort"
 	"text/template"
+
+	"github.com/kirk-anchor/pggen/internal/casing"
+	"github.com/kirk-anchor/pggen/internal/codegen"
 )
 
 // GenerateOptions are options to control generated Go output.

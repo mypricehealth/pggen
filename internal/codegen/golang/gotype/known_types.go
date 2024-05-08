@@ -2,8 +2,8 @@ package gotype
 
 import (
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/mypricehealth/pggen/internal/pg"
-	"github.com/mypricehealth/pggen/internal/pg/pgoid"
+	"github.com/kirk-anchor/pggen/internal/pg"
+	"github.com/kirk-anchor/pggen/internal/pg/pgoid"
 )
 
 // FindKnownTypePgx returns the native pgx type, like pgtype.Text, if known, for

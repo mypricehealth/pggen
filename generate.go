@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/mypricehealth/pggen/internal/ast"
-	"github.com/mypricehealth/pggen/internal/codegen"
-	"github.com/mypricehealth/pggen/internal/codegen/golang"
-	"github.com/mypricehealth/pggen/internal/errs"
-	"github.com/mypricehealth/pggen/internal/parser"
-	"github.com/mypricehealth/pggen/internal/pgdocker"
-	"github.com/mypricehealth/pggen/internal/pginfer"
+	"github.com/kirk-anchor/pggen/internal/ast"
+	"github.com/kirk-anchor/pggen/internal/codegen"
+	"github.com/kirk-anchor/pggen/internal/codegen/golang"
+	"github.com/kirk-anchor/pggen/internal/errs"
+	"github.com/kirk-anchor/pggen/internal/parser"
+	"github.com/kirk-anchor/pggen/internal/pgdocker"
+	"github.com/kirk-anchor/pggen/internal/pginfer"
 )
 
 // Lang is a supported codegen language.

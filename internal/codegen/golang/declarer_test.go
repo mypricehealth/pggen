@@ -2,14 +2,15 @@ package golang
 
 import (
 	"flag"
-	"github.com/mypricehealth/pggen/internal/casing"
-	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
-	"github.com/mypricehealth/pggen/internal/difftest"
-	"github.com/mypricehealth/pggen/internal/pg"
-	"github.com/stretchr/testify/require"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/kirk-anchor/pggen/internal/casing"
+	"github.com/kirk-anchor/pggen/internal/codegen/golang/gotype"
+	"github.com/kirk-anchor/pggen/internal/difftest"
+	"github.com/kirk-anchor/pggen/internal/pg"
+	"github.com/stretchr/testify/require"
 )
 
 var update = flag.Bool("update", false, "update integration tests if true")
