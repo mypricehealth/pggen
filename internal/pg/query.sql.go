@@ -137,7 +137,7 @@ func (q *DBQuerier) FindEnumTypes(ctx context.Context, oids []uint32) ([]FindEnu
 	ctx = context.WithValue(ctx, QueryName{}, "FindEnumTypes")
 	rows, err := q.conn.Query(ctx, findEnumTypesSQL, oids)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindEnumTypes: %w", err))
+		return nil, fmt.Errorf("query FindEnumTypes: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindEnumTypesRow])
 	return res, q.errWrap(err)
@@ -184,7 +184,7 @@ func (q *DBQuerier) FindArrayTypes(ctx context.Context, oids []uint32) ([]FindAr
 	ctx = context.WithValue(ctx, QueryName{}, "FindArrayTypes")
 	rows, err := q.conn.Query(ctx, findArrayTypesSQL, oids)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindArrayTypes: %w", err))
+		return nil, fmt.Errorf("query FindArrayTypes: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindArrayTypesRow])
 	return res, q.errWrap(err)
@@ -236,7 +236,7 @@ func (q *DBQuerier) FindCompositeTypes(ctx context.Context, oids []uint32) ([]Fi
 	ctx = context.WithValue(ctx, QueryName{}, "FindCompositeTypes")
 	rows, err := q.conn.Query(ctx, findCompositeTypesSQL, oids)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindCompositeTypes: %w", err))
+		return nil, fmt.Errorf("query FindCompositeTypes: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindCompositeTypesRow])
 	return res, q.errWrap(err)
@@ -275,7 +275,7 @@ func (q *DBQuerier) FindDescendantOIDs(ctx context.Context, oids []uint32) ([]ui
 	ctx = context.WithValue(ctx, QueryName{}, "FindDescendantOIDs")
 	rows, err := q.conn.Query(ctx, findDescendantOIDsSQL, oids)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindDescendantOIDs: %w", err))
+		return nil, fmt.Errorf("query FindDescendantOIDs: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[uint32])
 	return res, q.errWrap(err)
@@ -292,7 +292,7 @@ func (q *DBQuerier) FindOIDByName(ctx context.Context, name string) (uint32, err
 	ctx = context.WithValue(ctx, QueryName{}, "FindOIDByName")
 	rows, err := q.conn.Query(ctx, findOIDByNameSQL, name)
 	if err != nil {
-		return 0, q.errWrap(fmt.Errorf("query FindOIDByName: %w", err))
+		return 0, fmt.Errorf("query FindOIDByName: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[uint32])
 	return res, q.errWrap(err)
@@ -307,7 +307,7 @@ func (q *DBQuerier) FindOIDName(ctx context.Context, oid uint32) (string, error)
 	ctx = context.WithValue(ctx, QueryName{}, "FindOIDName")
 	rows, err := q.conn.Query(ctx, findOIDNameSQL, oid)
 	if err != nil {
-		return "", q.errWrap(fmt.Errorf("query FindOIDName: %w", err))
+		return "", fmt.Errorf("query FindOIDName: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
@@ -328,7 +328,7 @@ func (q *DBQuerier) FindOIDNames(ctx context.Context, oid []uint32) ([]FindOIDNa
 	ctx = context.WithValue(ctx, QueryName{}, "FindOIDNames")
 	rows, err := q.conn.Query(ctx, findOIDNamesSQL, oid)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindOIDNames: %w", err))
+		return nil, fmt.Errorf("query FindOIDNames: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOIDNamesRow])
 	return res, q.errWrap(err)

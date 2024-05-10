@@ -77,7 +77,7 @@ func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CustomTypes")
 	rows, err := q.conn.Query(ctx, customTypesSQL)
 	if err != nil {
-		return CustomTypesRow{}, q.errWrap(fmt.Errorf("query CustomTypes: %w", err))
+		return CustomTypesRow{}, fmt.Errorf("query CustomTypes: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CustomTypesRow])
 	return res, q.errWrap(err)
@@ -90,7 +90,7 @@ func (q *DBQuerier) CustomMyInt(ctx context.Context) (int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CustomMyInt")
 	rows, err := q.conn.Query(ctx, customMyIntSQL)
 	if err != nil {
-		return 0, q.errWrap(fmt.Errorf("query CustomMyInt: %w", err))
+		return 0, fmt.Errorf("query CustomMyInt: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int])
 	return res, q.errWrap(err)
@@ -103,7 +103,7 @@ func (q *DBQuerier) IntArray(ctx context.Context) ([][]int32, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "IntArray")
 	rows, err := q.conn.Query(ctx, intArraySQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query IntArray: %w", err))
+		return nil, fmt.Errorf("query IntArray: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[[]int32])
 	return res, q.errWrap(err)

@@ -77,7 +77,7 @@ func (q *DBQuerier) CountAuthors(ctx context.Context) (*int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CountAuthors")
 	rows, err := q.conn.Query(ctx, countAuthorsSQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query CountAuthors: %w", err))
+		return nil, fmt.Errorf("query CountAuthors: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
 	return res, q.errWrap(err)
@@ -101,7 +101,7 @@ func (q *DBQuerier) FindAuthorByID(ctx context.Context, params FindAuthorByIDPar
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
 	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, params.AuthorID)
 	if err != nil {
-		return FindAuthorByIDRow{}, q.errWrap(fmt.Errorf("query FindAuthorByID: %w", err))
+		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindAuthorByIDRow])
 	return res, q.errWrap(err)
@@ -121,7 +121,7 @@ func (q *DBQuerier) InsertAuthor(ctx context.Context, params InsertAuthorParams)
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
 	rows, err := q.conn.Query(ctx, insertAuthorSQL, params.FirstName, params.LastName)
 	if err != nil {
-		return 0, q.errWrap(fmt.Errorf("query InsertAuthor: %w", err))
+		return 0, fmt.Errorf("query InsertAuthor: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int32])
 	return res, q.errWrap(err)
@@ -144,7 +144,7 @@ func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, params DeleteAu
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query DeleteAuthorsByFullName: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }

@@ -67,7 +67,7 @@ func (q *DBQuerier) DomainOne(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "DomainOne")
 	rows, err := q.conn.Query(ctx, domainOneSQL)
 	if err != nil {
-		return "", q.errWrap(fmt.Errorf("query DomainOne: %w", err))
+		return "", fmt.Errorf("query DomainOne: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)

@@ -102,7 +102,7 @@ func (q *DBQuerier) ParamArrayInt(ctx context.Context, ints []int) ([]int, error
 	ctx = context.WithValue(ctx, QueryName{}, "ParamArrayInt")
 	rows, err := q.conn.Query(ctx, paramArrayIntSQL, ints)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query ParamArrayInt: %w", err))
+		return nil, fmt.Errorf("query ParamArrayInt: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
 	return res, q.errWrap(err)
@@ -115,7 +115,7 @@ func (q *DBQuerier) ParamNested1(ctx context.Context, dimensions Dimensions) (Di
 	ctx = context.WithValue(ctx, QueryName{}, "ParamNested1")
 	rows, err := q.conn.Query(ctx, paramNested1SQL, dimensions)
 	if err != nil {
-		return Dimensions{}, q.errWrap(fmt.Errorf("query ParamNested1: %w", err))
+		return Dimensions{}, fmt.Errorf("query ParamNested1: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[Dimensions])
 	return res, q.errWrap(err)
@@ -128,7 +128,7 @@ func (q *DBQuerier) ParamNested2(ctx context.Context, image ProductImageType) (P
 	ctx = context.WithValue(ctx, QueryName{}, "ParamNested2")
 	rows, err := q.conn.Query(ctx, paramNested2SQL, image)
 	if err != nil {
-		return ProductImageType{}, q.errWrap(fmt.Errorf("query ParamNested2: %w", err))
+		return ProductImageType{}, fmt.Errorf("query ParamNested2: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[ProductImageType])
 	return res, q.errWrap(err)
@@ -141,7 +141,7 @@ func (q *DBQuerier) ParamNested2Array(ctx context.Context, images []ProductImage
 	ctx = context.WithValue(ctx, QueryName{}, "ParamNested2Array")
 	rows, err := q.conn.Query(ctx, paramNested2ArraySQL, images)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query ParamNested2Array: %w", err))
+		return nil, fmt.Errorf("query ParamNested2Array: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
 	return res, q.errWrap(err)
@@ -154,7 +154,7 @@ func (q *DBQuerier) ParamNested3(ctx context.Context, imageSet ProductImageSetTy
 	ctx = context.WithValue(ctx, QueryName{}, "ParamNested3")
 	rows, err := q.conn.Query(ctx, paramNested3SQL, imageSet)
 	if err != nil {
-		return ProductImageSetType{}, q.errWrap(fmt.Errorf("query ParamNested3: %w", err))
+		return ProductImageSetType{}, fmt.Errorf("query ParamNested3: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[ProductImageSetType])
 	return res, q.errWrap(err)

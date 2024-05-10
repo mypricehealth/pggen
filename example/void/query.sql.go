@@ -75,7 +75,7 @@ func (q *DBQuerier) VoidOnly(ctx context.Context) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidOnly")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlySQL)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query VoidOnly: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnly: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }
@@ -87,7 +87,7 @@ func (q *DBQuerier) VoidOnlyTwoParams(ctx context.Context, id int32) (pgconn.Com
 	ctx = context.WithValue(ctx, QueryName{}, "VoidOnlyTwoParams")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlyTwoParamsSQL, id)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query VoidOnlyTwoParams: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnlyTwoParams: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }
@@ -99,7 +99,7 @@ func (q *DBQuerier) VoidTwo(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidTwo")
 	rows, err := q.conn.Query(ctx, voidTwoSQL)
 	if err != nil {
-		return "", q.errWrap(fmt.Errorf("query VoidTwo: %w", err))
+		return "", fmt.Errorf("query VoidTwo: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
@@ -117,7 +117,7 @@ func (q *DBQuerier) VoidThree(ctx context.Context) (VoidThreeRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidThree")
 	rows, err := q.conn.Query(ctx, voidThreeSQL)
 	if err != nil {
-		return VoidThreeRow{}, q.errWrap(fmt.Errorf("query VoidThree: %w", err))
+		return VoidThreeRow{}, fmt.Errorf("query VoidThree: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[VoidThreeRow])
 	return res, q.errWrap(err)
@@ -130,7 +130,7 @@ func (q *DBQuerier) VoidThree2(ctx context.Context) ([]string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidThree2")
 	rows, err := q.conn.Query(ctx, voidThree2SQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query VoidThree2: %w", err))
+		return nil, fmt.Errorf("query VoidThree2: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)

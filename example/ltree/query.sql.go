@@ -76,7 +76,7 @@ func (q *DBQuerier) FindTopScienceChildren(ctx context.Context) ([]pgtype.Text, 
 	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildren")
 	rows, err := q.conn.Query(ctx, findTopScienceChildrenSQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindTopScienceChildren: %w", err))
+		return nil, fmt.Errorf("query FindTopScienceChildren: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[pgtype.Text])
 	return res, q.errWrap(err)
@@ -91,7 +91,7 @@ func (q *DBQuerier) FindTopScienceChildrenAgg(ctx context.Context) (pgtype.TextA
 	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildrenAgg")
 	rows, err := q.conn.Query(ctx, findTopScienceChildrenAggSQL)
 	if err != nil {
-		return TextArray{}, q.errWrap(fmt.Errorf("query FindTopScienceChildrenAgg: %w", err))
+		return TextArray{}, fmt.Errorf("query FindTopScienceChildrenAgg: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[pgtype.TextArray])
 	return res, q.errWrap(err)
@@ -117,7 +117,7 @@ func (q *DBQuerier) InsertSampleData(ctx context.Context) (pgconn.CommandTag, er
 	ctx = context.WithValue(ctx, QueryName{}, "InsertSampleData")
 	cmdTag, err := q.conn.Exec(ctx, insertSampleDataSQL)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query InsertSampleData: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertSampleData: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }
@@ -143,7 +143,7 @@ func (q *DBQuerier) FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inL
 	ctx = context.WithValue(ctx, QueryName{}, "FindLtreeInput")
 	rows, err := q.conn.Query(ctx, findLtreeInputSQL, inLtree, inLtreeArray)
 	if err != nil {
-		return FindLtreeInputRow{}, q.errWrap(fmt.Errorf("query FindLtreeInput: %w", err))
+		return FindLtreeInputRow{}, fmt.Errorf("query FindLtreeInput: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindLtreeInputRow])
 	return res, q.errWrap(err)

@@ -70,7 +70,7 @@ func (q *DBQuerier) CreateUser(ctx context.Context, email string, password strin
 	ctx = context.WithValue(ctx, QueryName{}, "CreateUser")
 	cmdTag, err := q.conn.Exec(ctx, createUserSQL, email, password)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query CreateUser: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query CreateUser: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }
@@ -88,7 +88,7 @@ func (q *DBQuerier) FindUser(ctx context.Context, email string) (FindUserRow, er
 	ctx = context.WithValue(ctx, QueryName{}, "FindUser")
 	rows, err := q.conn.Query(ctx, findUserSQL, email)
 	if err != nil {
-		return FindUserRow{}, q.errWrap(fmt.Errorf("query FindUser: %w", err))
+		return FindUserRow{}, fmt.Errorf("query FindUser: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindUserRow])
 	return res, q.errWrap(err)

@@ -88,7 +88,7 @@ func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (
 	ctx = context.WithValue(ctx, QueryName{}, "CreateTenant")
 	rows, err := q.conn.Query(ctx, createTenantSQL, key, name)
 	if err != nil {
-		return CreateTenantRow{}, q.errWrap(fmt.Errorf("query CreateTenant: %w", err))
+		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
 	return res, q.errWrap(err)
@@ -110,7 +110,7 @@ func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) 
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByCustomer")
 	rows, err := q.conn.Query(ctx, findOrdersByCustomerSQL, customerID)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindOrdersByCustomer: %w", err))
+		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
 	return res, q.errWrap(err)
@@ -133,7 +133,7 @@ func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]F
 	ctx = context.WithValue(ctx, QueryName{}, "FindProductsInOrder")
 	rows, err := q.conn.Query(ctx, findProductsInOrderSQL, orderID)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindProductsInOrder: %w", err))
+		return nil, fmt.Errorf("query FindProductsInOrder: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
 	return res, q.errWrap(err)
@@ -161,7 +161,7 @@ func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerPar
 	ctx = context.WithValue(ctx, QueryName{}, "InsertCustomer")
 	rows, err := q.conn.Query(ctx, insertCustomerSQL, params.FirstName, params.LastName, params.Email)
 	if err != nil {
-		return InsertCustomerRow{}, q.errWrap(fmt.Errorf("query InsertCustomer: %w", err))
+		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
 	return res, q.errWrap(err)
@@ -189,7 +189,7 @@ func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (
 	ctx = context.WithValue(ctx, QueryName{}, "InsertOrder")
 	rows, err := q.conn.Query(ctx, insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
 	if err != nil {
-		return InsertOrderRow{}, q.errWrap(fmt.Errorf("query InsertOrder: %w", err))
+		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
 	return res, q.errWrap(err)

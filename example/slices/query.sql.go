@@ -74,7 +74,7 @@ func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetBools")
 	rows, err := q.conn.Query(ctx, getBoolsSQL, data)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GetBools: %w", err))
+		return nil, fmt.Errorf("query GetBools: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]bool])
 	return res, q.errWrap(err)
@@ -87,7 +87,7 @@ func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time
 	ctx = context.WithValue(ctx, QueryName{}, "GetOneTimestamp")
 	rows, err := q.conn.Query(ctx, getOneTimestampSQL, data)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GetOneTimestamp: %w", err))
+		return nil, fmt.Errorf("query GetOneTimestamp: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*time.Time])
 	return res, q.errWrap(err)
@@ -101,7 +101,7 @@ func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) (
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamptzs")
 	rows, err := q.conn.Query(ctx, getManyTimestamptzsSQL, data)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GetManyTimestamptzs: %w", err))
+		return nil, fmt.Errorf("query GetManyTimestamptzs: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
 	return res, q.errWrap(err)
@@ -115,7 +115,7 @@ func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamps")
 	rows, err := q.conn.Query(ctx, getManyTimestampsSQL, data)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GetManyTimestamps: %w", err))
+		return nil, fmt.Errorf("query GetManyTimestamps: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
 	return res, q.errWrap(err)

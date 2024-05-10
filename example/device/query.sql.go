@@ -114,7 +114,7 @@ func (q *DBQuerier) FindDevicesByUser(ctx context.Context, id int) ([]FindDevice
 	ctx = context.WithValue(ctx, QueryName{}, "FindDevicesByUser")
 	rows, err := q.conn.Query(ctx, findDevicesByUserSQL, id)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindDevicesByUser: %w", err))
+		return nil, fmt.Errorf("query FindDevicesByUser: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindDevicesByUserRow])
 	return res, q.errWrap(err)
@@ -138,7 +138,7 @@ func (q *DBQuerier) CompositeUser(ctx context.Context) ([]CompositeUserRow, erro
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUser")
 	rows, err := q.conn.Query(ctx, compositeUserSQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query CompositeUser: %w", err))
+		return nil, fmt.Errorf("query CompositeUser: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[CompositeUserRow])
 	return res, q.errWrap(err)
@@ -151,7 +151,7 @@ func (q *DBQuerier) CompositeUserOne(ctx context.Context) (User, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOne")
 	rows, err := q.conn.Query(ctx, compositeUserOneSQL)
 	if err != nil {
-		return User{}, q.errWrap(fmt.Errorf("query CompositeUserOne: %w", err))
+		return User{}, fmt.Errorf("query CompositeUserOne: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[User])
 	return res, q.errWrap(err)
@@ -169,7 +169,7 @@ func (q *DBQuerier) CompositeUserOneTwoCols(ctx context.Context) (CompositeUserO
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOneTwoCols")
 	rows, err := q.conn.Query(ctx, compositeUserOneTwoColsSQL)
 	if err != nil {
-		return CompositeUserOneTwoColsRow{}, q.errWrap(fmt.Errorf("query CompositeUserOneTwoCols: %w", err))
+		return CompositeUserOneTwoColsRow{}, fmt.Errorf("query CompositeUserOneTwoCols: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CompositeUserOneTwoColsRow])
 	return res, q.errWrap(err)
@@ -182,7 +182,7 @@ func (q *DBQuerier) CompositeUserMany(ctx context.Context) ([]User, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserMany")
 	rows, err := q.conn.Query(ctx, compositeUserManySQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query CompositeUserMany: %w", err))
+		return nil, fmt.Errorf("query CompositeUserMany: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[User])
 	return res, q.errWrap(err)
@@ -196,7 +196,7 @@ func (q *DBQuerier) InsertUser(ctx context.Context, userID int, name string) (pg
 	ctx = context.WithValue(ctx, QueryName{}, "InsertUser")
 	cmdTag, err := q.conn.Exec(ctx, insertUserSQL, userID, name)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query InsertUser: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertUser: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }
@@ -209,7 +209,7 @@ func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, owne
 	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, owner)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query InsertDevice: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }

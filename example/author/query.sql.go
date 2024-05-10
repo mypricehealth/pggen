@@ -104,7 +104,7 @@ func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAut
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
 	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, authorID)
 	if err != nil {
-		return FindAuthorByIDRow{}, q.errWrap(fmt.Errorf("query FindAuthorByID: %w", err))
+		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindAuthorByIDRow])
 	return res, q.errWrap(err)
@@ -124,7 +124,7 @@ func (q *DBQuerier) FindAuthors(ctx context.Context, firstName string) ([]FindAu
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthors")
 	rows, err := q.conn.Query(ctx, findAuthorsSQL, firstName)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindAuthors: %w", err))
+		return nil, fmt.Errorf("query FindAuthors: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindAuthorsRow])
 	return res, q.errWrap(err)
@@ -142,7 +142,7 @@ func (q *DBQuerier) FindAuthorNames(ctx context.Context, authorID int32) ([]Find
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorNames")
 	rows, err := q.conn.Query(ctx, findAuthorNamesSQL, authorID)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindAuthorNames: %w", err))
+		return nil, fmt.Errorf("query FindAuthorNames: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindAuthorNamesRow])
 	return res, q.errWrap(err)
@@ -155,7 +155,7 @@ func (q *DBQuerier) FindFirstNames(ctx context.Context, authorID int32) ([]*stri
 	ctx = context.WithValue(ctx, QueryName{}, "FindFirstNames")
 	rows, err := q.conn.Query(ctx, findFirstNamesSQL, authorID)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query FindFirstNames: %w", err))
+		return nil, fmt.Errorf("query FindFirstNames: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[*string])
 	return res, q.errWrap(err)
@@ -168,7 +168,7 @@ func (q *DBQuerier) DeleteAuthors(ctx context.Context) (pgconn.CommandTag, error
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthors")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsSQL)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query DeleteAuthors: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthors: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }
@@ -180,7 +180,7 @@ func (q *DBQuerier) DeleteAuthorsByFirstName(ctx context.Context, firstName stri
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFirstName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFirstNameSQL, firstName)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query DeleteAuthorsByFirstName: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFirstName: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }
@@ -202,7 +202,7 @@ func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, params DeleteAu
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query DeleteAuthorsByFullName: %w", err))
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 }
@@ -216,7 +216,7 @@ func (q *DBQuerier) InsertAuthor(ctx context.Context, firstName string, lastName
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
 	rows, err := q.conn.Query(ctx, insertAuthorSQL, firstName, lastName)
 	if err != nil {
-		return 0, q.errWrap(fmt.Errorf("query InsertAuthor: %w", err))
+		return 0, fmt.Errorf("query InsertAuthor: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int32])
 	return res, q.errWrap(err)
@@ -244,7 +244,7 @@ func (q *DBQuerier) InsertAuthorSuffix(ctx context.Context, params InsertAuthorS
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthorSuffix")
 	rows, err := q.conn.Query(ctx, insertAuthorSuffixSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
-		return InsertAuthorSuffixRow{}, q.errWrap(fmt.Errorf("query InsertAuthorSuffix: %w", err))
+		return InsertAuthorSuffixRow{}, fmt.Errorf("query InsertAuthorSuffix: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertAuthorSuffixRow])
 	return res, q.errWrap(err)
@@ -257,7 +257,7 @@ func (q *DBQuerier) StringAggFirstName(ctx context.Context, authorID int32) (*st
 	ctx = context.WithValue(ctx, QueryName{}, "StringAggFirstName")
 	rows, err := q.conn.Query(ctx, stringAggFirstNameSQL, authorID)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query StringAggFirstName: %w", err))
+		return nil, fmt.Errorf("query StringAggFirstName: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
 	return res, q.errWrap(err)
@@ -270,7 +270,7 @@ func (q *DBQuerier) ArrayAggFirstName(ctx context.Context, authorID int32) ([]st
 	ctx = context.WithValue(ctx, QueryName{}, "ArrayAggFirstName")
 	rows, err := q.conn.Query(ctx, arrayAggFirstNameSQL, authorID)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query ArrayAggFirstName: %w", err))
+		return nil, fmt.Errorf("query ArrayAggFirstName: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]string])
 	return res, q.errWrap(err)

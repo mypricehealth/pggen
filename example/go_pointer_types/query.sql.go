@@ -79,7 +79,7 @@ func (q *DBQuerier) GenSeries1(ctx context.Context) (*int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeries1")
 	rows, err := q.conn.Query(ctx, genSeries1SQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GenSeries1: %w", err))
+		return nil, fmt.Errorf("query GenSeries1: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
 	return res, q.errWrap(err)
@@ -93,7 +93,7 @@ func (q *DBQuerier) GenSeries(ctx context.Context) ([]*int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeries")
 	rows, err := q.conn.Query(ctx, genSeriesSQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GenSeries: %w", err))
+		return nil, fmt.Errorf("query GenSeries: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[*int])
 	return res, q.errWrap(err)
@@ -107,7 +107,7 @@ func (q *DBQuerier) GenSeriesArr1(ctx context.Context) ([]int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr1")
 	rows, err := q.conn.Query(ctx, genSeriesArr1SQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GenSeriesArr1: %w", err))
+		return nil, fmt.Errorf("query GenSeriesArr1: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
 	return res, q.errWrap(err)
@@ -121,7 +121,7 @@ func (q *DBQuerier) GenSeriesArr(ctx context.Context) ([][]int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr")
 	rows, err := q.conn.Query(ctx, genSeriesArrSQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GenSeriesArr: %w", err))
+		return nil, fmt.Errorf("query GenSeriesArr: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[[]int])
 	return res, q.errWrap(err)
@@ -136,7 +136,7 @@ func (q *DBQuerier) GenSeriesStr1(ctx context.Context) (*string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr1")
 	rows, err := q.conn.Query(ctx, genSeriesStr1SQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GenSeriesStr1: %w", err))
+		return nil, fmt.Errorf("query GenSeriesStr1: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
 	return res, q.errWrap(err)
@@ -150,7 +150,7 @@ func (q *DBQuerier) GenSeriesStr(ctx context.Context) ([]*string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr")
 	rows, err := q.conn.Query(ctx, genSeriesStrSQL)
 	if err != nil {
-		return nil, q.errWrap(fmt.Errorf("query GenSeriesStr: %w", err))
+		return nil, fmt.Errorf("query GenSeriesStr: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[*string])
 	return res, q.errWrap(err)

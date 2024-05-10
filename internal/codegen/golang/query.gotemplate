@@ -70,19 +70,19 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
 {{- if eq $q.ResultKind ":exec" }}
 	cmdTag, err := q.conn.Exec(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
-		return {{ $q.EmitZeroResult }}, q.errWrap(fmt.Errorf("exec query {{ $q.Name }}: %w", err))
+		return {{ $q.EmitZeroResult }}, fmt.Errorf("exec query {{ $q.Name }}: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
 {{- else if eq $q.ResultKind ":rows" }}
     rows, err := q.conn.Query(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
-		return {{ $q.EmitZeroResult }}, q.errWrap(fmt.Errorf("rows query {{ $q.Name }}: %w", err))
+		return {{ $q.EmitZeroResult }}, fmt.Errorf("rows query {{ $q.Name }}: %w", q.errWrap(err))
 	}
 	return rows, q.errWrap(err)
 {{- else }}
 	rows, err := q.conn.Query(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
-		return {{ $q.EmitZeroResult }}, q.errWrap(fmt.Errorf("query {{ $q.Name }}: %w", err))
+		return {{ $q.EmitZeroResult }}, fmt.Errorf("query {{ $q.Name }}: %w", q.errWrap(err))
 	}
 	res, err := {{ $q.EmitCollectionFunc }}(rows, {{ $q.EmitRowToFunc }}[{{ $q.EmitSingularResultType }}])
 	return res, q.errWrap(err)
