@@ -16,8 +16,8 @@ func (q *DBQuerier) Alpha(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Alpha")
 	rows, err := q.conn.Query(ctx, alphaSQL)
 	if err != nil {
-		return "", fmt.Errorf("query Alpha: %w", err)
+		return "", q.errWrap(fmt.Errorf("query Alpha: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	return res, q.errWrap(err)
 }

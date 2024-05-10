@@ -35,7 +35,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -47,7 +48,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // Device represents the Postgres composite type "device".
@@ -106,10 +112,10 @@ func (q *DBQuerier) FindAllDevices(ctx context.Context) ([]FindAllDevicesRow, er
 	ctx = context.WithValue(ctx, QueryName{}, "FindAllDevices")
 	rows, err := q.conn.Query(ctx, findAllDevicesSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query FindAllDevices: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query FindAllDevices: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindAllDevicesRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindAllDevicesRow])
+	return res, q.errWrap(err)
 }
 
 const insertDeviceSQL = `INSERT INTO device (mac, type)
@@ -120,9 +126,9 @@ func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, type
 	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, typePg)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", err)
+		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query InsertDevice: %w", err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }
 
 const findOneDeviceArraySQL = `SELECT enum_range(NULL::device_type) AS device_types;`
@@ -132,10 +138,10 @@ func (q *DBQuerier) FindOneDeviceArray(ctx context.Context) ([]DeviceType, error
 	ctx = context.WithValue(ctx, QueryName{}, "FindOneDeviceArray")
 	rows, err := q.conn.Query(ctx, findOneDeviceArraySQL)
 	if err != nil {
-		return nil, fmt.Errorf("query FindOneDeviceArray: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query FindOneDeviceArray: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]DeviceType])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]DeviceType])
+	return res, q.errWrap(err)
 }
 
 const findManyDeviceArraySQL = `SELECT enum_range('ipad'::device_type, 'iot'::device_type) AS device_types
@@ -147,10 +153,10 @@ func (q *DBQuerier) FindManyDeviceArray(ctx context.Context) ([][]DeviceType, er
 	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArray")
 	rows, err := q.conn.Query(ctx, findManyDeviceArraySQL)
 	if err != nil {
-		return nil, fmt.Errorf("query FindManyDeviceArray: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query FindManyDeviceArray: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[[]DeviceType])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[[]DeviceType])
+	return res, q.errWrap(err)
 }
 
 const findManyDeviceArrayWithNumSQL = `SELECT 1 AS num, enum_range('ipad'::device_type, 'iot'::device_type) AS device_types
@@ -167,10 +173,10 @@ func (q *DBQuerier) FindManyDeviceArrayWithNum(ctx context.Context) ([]FindManyD
 	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArrayWithNum")
 	rows, err := q.conn.Query(ctx, findManyDeviceArrayWithNumSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query FindManyDeviceArrayWithNum: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query FindManyDeviceArrayWithNum: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindManyDeviceArrayWithNumRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindManyDeviceArrayWithNumRow])
+	return res, q.errWrap(err)
 }
 
 const enumInsideCompositeSQL = `SELECT ROW('08:00:2b:01:02:03'::macaddr, 'phone'::device_type) ::device;`
@@ -180,8 +186,8 @@ func (q *DBQuerier) EnumInsideComposite(ctx context.Context) (Device, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "EnumInsideComposite")
 	rows, err := q.conn.Query(ctx, enumInsideCompositeSQL)
 	if err != nil {
-		return Device{}, fmt.Errorf("query EnumInsideComposite: %w", err)
+		return Device{}, q.errWrap(fmt.Errorf("query EnumInsideComposite: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[Device])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[Device])
+	return res, q.errWrap(err)
 }

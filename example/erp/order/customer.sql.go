@@ -33,7 +33,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -45,7 +46,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
@@ -82,10 +88,10 @@ func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (
 	ctx = context.WithValue(ctx, QueryName{}, "CreateTenant")
 	rows, err := q.conn.Query(ctx, createTenantSQL, key, name)
 	if err != nil {
-		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", err)
+		return CreateTenantRow{}, q.errWrap(fmt.Errorf("query CreateTenant: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
+	return res, q.errWrap(err)
 }
 
 const findOrdersByCustomerSQL = `SELECT *
@@ -104,10 +110,10 @@ func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) 
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByCustomer")
 	rows, err := q.conn.Query(ctx, findOrdersByCustomerSQL, customerID)
 	if err != nil {
-		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query FindOrdersByCustomer: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
+	return res, q.errWrap(err)
 }
 
 const findProductsInOrderSQL = `SELECT o.order_id, p.product_id, p.name
@@ -127,10 +133,10 @@ func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]F
 	ctx = context.WithValue(ctx, QueryName{}, "FindProductsInOrder")
 	rows, err := q.conn.Query(ctx, findProductsInOrderSQL, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("query FindProductsInOrder: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query FindProductsInOrder: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
+	return res, q.errWrap(err)
 }
 
 const insertCustomerSQL = `INSERT INTO customer (first_name, last_name, email)
@@ -155,10 +161,10 @@ func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerPar
 	ctx = context.WithValue(ctx, QueryName{}, "InsertCustomer")
 	rows, err := q.conn.Query(ctx, insertCustomerSQL, params.FirstName, params.LastName, params.Email)
 	if err != nil {
-		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", err)
+		return InsertCustomerRow{}, q.errWrap(fmt.Errorf("query InsertCustomer: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
+	return res, q.errWrap(err)
 }
 
 const insertOrderSQL = `INSERT INTO orders (order_date, order_total, customer_id)
@@ -183,8 +189,8 @@ func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (
 	ctx = context.WithValue(ctx, QueryName{}, "InsertOrder")
 	rows, err := q.conn.Query(ctx, insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
 	if err != nil {
-		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", err)
+		return InsertOrderRow{}, q.errWrap(fmt.Errorf("query InsertOrder: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
+	return res, q.errWrap(err)
 }

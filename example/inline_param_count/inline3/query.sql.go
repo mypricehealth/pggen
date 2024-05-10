@@ -30,7 +30,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -42,7 +43,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
@@ -71,10 +77,10 @@ func (q *DBQuerier) CountAuthors(ctx context.Context) (*int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CountAuthors")
 	rows, err := q.conn.Query(ctx, countAuthorsSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query CountAuthors: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query CountAuthors: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
+	return res, q.errWrap(err)
 }
 
 const findAuthorByIDSQL = `SELECT * FROM author WHERE author_id = $1;`
@@ -91,10 +97,10 @@ func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAut
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
 	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, authorID)
 	if err != nil {
-		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", err)
+		return FindAuthorByIDRow{}, q.errWrap(fmt.Errorf("query FindAuthorByID: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindAuthorByIDRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindAuthorByIDRow])
+	return res, q.errWrap(err)
 }
 
 const insertAuthorSQL = `INSERT INTO author (first_name, last_name)
@@ -106,10 +112,10 @@ func (q *DBQuerier) InsertAuthor(ctx context.Context, firstName string, lastName
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
 	rows, err := q.conn.Query(ctx, insertAuthorSQL, firstName, lastName)
 	if err != nil {
-		return 0, fmt.Errorf("query InsertAuthor: %w", err)
+		return 0, q.errWrap(fmt.Errorf("query InsertAuthor: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[int32])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int32])
+	return res, q.errWrap(err)
 }
 
 const deleteAuthorsByFullNameSQL = `DELETE
@@ -123,7 +129,7 @@ func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, firstName strin
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, firstName, lastName, suffix)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", err)
+		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query DeleteAuthorsByFullName: %w", err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }

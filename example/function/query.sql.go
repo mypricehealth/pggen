@@ -20,7 +20,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -32,7 +33,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // ListItem represents the Postgres composite type "list_item".
@@ -84,8 +90,8 @@ func (q *DBQuerier) OutParams(ctx context.Context) ([]OutParamsRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "OutParams")
 	rows, err := q.conn.Query(ctx, outParamsSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query OutParams: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query OutParams: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[OutParamsRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[OutParamsRow])
+	return res, q.errWrap(err)
 }

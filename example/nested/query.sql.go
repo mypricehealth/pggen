@@ -22,7 +22,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -34,7 +35,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // Dimensions represents the Postgres composite type "dimensions".
@@ -94,10 +100,10 @@ func (q *DBQuerier) ArrayNested2(ctx context.Context) ([]ProductImageType, error
 	ctx = context.WithValue(ctx, QueryName{}, "ArrayNested2")
 	rows, err := q.conn.Query(ctx, arrayNested2SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query ArrayNested2: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query ArrayNested2: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
+	return res, q.errWrap(err)
 }
 
 const nested3SQL = `SELECT
@@ -115,8 +121,8 @@ func (q *DBQuerier) Nested3(ctx context.Context) ([]ProductImageSetType, error) 
 	ctx = context.WithValue(ctx, QueryName{}, "Nested3")
 	rows, err := q.conn.Query(ctx, nested3SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query Nested3: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query Nested3: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[ProductImageSetType])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[ProductImageSetType])
+	return res, q.errWrap(err)
 }

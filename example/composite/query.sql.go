@@ -29,7 +29,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -41,7 +42,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // Arrays represents the Postgres composite type "arrays".
@@ -118,10 +124,10 @@ func (q *DBQuerier) SearchScreenshots(ctx context.Context, params SearchScreensh
 	ctx = context.WithValue(ctx, QueryName{}, "SearchScreenshots")
 	rows, err := q.conn.Query(ctx, searchScreenshotsSQL, params.Body, params.Limit, params.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("query SearchScreenshots: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query SearchScreenshots: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[SearchScreenshotsRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[SearchScreenshotsRow])
+	return res, q.errWrap(err)
 }
 
 const searchScreenshotsOneColSQL = `SELECT
@@ -144,10 +150,10 @@ func (q *DBQuerier) SearchScreenshotsOneCol(ctx context.Context, params SearchSc
 	ctx = context.WithValue(ctx, QueryName{}, "SearchScreenshotsOneCol")
 	rows, err := q.conn.Query(ctx, searchScreenshotsOneColSQL, params.Body, params.Limit, params.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("query SearchScreenshotsOneCol: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query SearchScreenshotsOneCol: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[[]Blocks])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[[]Blocks])
+	return res, q.errWrap(err)
 }
 
 const insertScreenshotBlocksSQL = `WITH screens AS (
@@ -170,10 +176,10 @@ func (q *DBQuerier) InsertScreenshotBlocks(ctx context.Context, screenshotID int
 	ctx = context.WithValue(ctx, QueryName{}, "InsertScreenshotBlocks")
 	rows, err := q.conn.Query(ctx, insertScreenshotBlocksSQL, screenshotID, body)
 	if err != nil {
-		return InsertScreenshotBlocksRow{}, fmt.Errorf("query InsertScreenshotBlocks: %w", err)
+		return InsertScreenshotBlocksRow{}, q.errWrap(fmt.Errorf("query InsertScreenshotBlocks: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertScreenshotBlocksRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertScreenshotBlocksRow])
+	return res, q.errWrap(err)
 }
 
 const arraysInputSQL = `SELECT $1::arrays;`
@@ -183,10 +189,10 @@ func (q *DBQuerier) ArraysInput(ctx context.Context, arrays Arrays) (Arrays, err
 	ctx = context.WithValue(ctx, QueryName{}, "ArraysInput")
 	rows, err := q.conn.Query(ctx, arraysInputSQL, arrays)
 	if err != nil {
-		return Arrays{}, fmt.Errorf("query ArraysInput: %w", err)
+		return Arrays{}, q.errWrap(fmt.Errorf("query ArraysInput: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[Arrays])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[Arrays])
+	return res, q.errWrap(err)
 }
 
 const userEmailsSQL = `SELECT ('foo', 'bar@example.com')::user_email;`
@@ -196,8 +202,8 @@ func (q *DBQuerier) UserEmails(ctx context.Context) (UserEmail, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "UserEmails")
 	rows, err := q.conn.Query(ctx, userEmailsSQL)
 	if err != nil {
-		return UserEmail{}, fmt.Errorf("query UserEmails: %w", err)
+		return UserEmail{}, q.errWrap(fmt.Errorf("query UserEmails: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[UserEmail])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[UserEmail])
+	return res, q.errWrap(err)
 }

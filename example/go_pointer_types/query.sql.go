@@ -30,7 +30,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -42,7 +43,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
@@ -73,10 +79,10 @@ func (q *DBQuerier) GenSeries1(ctx context.Context) (*int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeries1")
 	rows, err := q.conn.Query(ctx, genSeries1SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeries1: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GenSeries1: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
+	return res, q.errWrap(err)
 }
 
 const genSeriesSQL = `SELECT n
@@ -87,10 +93,10 @@ func (q *DBQuerier) GenSeries(ctx context.Context) ([]*int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeries")
 	rows, err := q.conn.Query(ctx, genSeriesSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeries: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GenSeries: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[*int])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[*int])
+	return res, q.errWrap(err)
 }
 
 const genSeriesArr1SQL = `SELECT array_agg(n)
@@ -101,10 +107,10 @@ func (q *DBQuerier) GenSeriesArr1(ctx context.Context) ([]int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr1")
 	rows, err := q.conn.Query(ctx, genSeriesArr1SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeriesArr1: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GenSeriesArr1: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
+	return res, q.errWrap(err)
 }
 
 const genSeriesArrSQL = `SELECT array_agg(n)
@@ -115,10 +121,10 @@ func (q *DBQuerier) GenSeriesArr(ctx context.Context) ([][]int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr")
 	rows, err := q.conn.Query(ctx, genSeriesArrSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeriesArr: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GenSeriesArr: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[[]int])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[[]int])
+	return res, q.errWrap(err)
 }
 
 const genSeriesStr1SQL = `SELECT n::text
@@ -130,10 +136,10 @@ func (q *DBQuerier) GenSeriesStr1(ctx context.Context) (*string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr1")
 	rows, err := q.conn.Query(ctx, genSeriesStr1SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeriesStr1: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GenSeriesStr1: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
+	return res, q.errWrap(err)
 }
 
 const genSeriesStrSQL = `SELECT n::text
@@ -144,8 +150,8 @@ func (q *DBQuerier) GenSeriesStr(ctx context.Context) ([]*string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr")
 	rows, err := q.conn.Query(ctx, genSeriesStrSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeriesStr: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GenSeriesStr: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[*string])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[*string])
+	return res, q.errWrap(err)
 }

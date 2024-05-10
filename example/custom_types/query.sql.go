@@ -25,7 +25,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -37,7 +38,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
@@ -71,10 +77,10 @@ func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CustomTypes")
 	rows, err := q.conn.Query(ctx, customTypesSQL)
 	if err != nil {
-		return CustomTypesRow{}, fmt.Errorf("query CustomTypes: %w", err)
+		return CustomTypesRow{}, q.errWrap(fmt.Errorf("query CustomTypes: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CustomTypesRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CustomTypesRow])
+	return res, q.errWrap(err)
 }
 
 const customMyIntSQL = `SELECT '5'::my_int as int5;`
@@ -84,10 +90,10 @@ func (q *DBQuerier) CustomMyInt(ctx context.Context) (int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CustomMyInt")
 	rows, err := q.conn.Query(ctx, customMyIntSQL)
 	if err != nil {
-		return 0, fmt.Errorf("query CustomMyInt: %w", err)
+		return 0, q.errWrap(fmt.Errorf("query CustomMyInt: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[int])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int])
+	return res, q.errWrap(err)
 }
 
 const intArraySQL = `SELECT ARRAY ['5', '6', '7']::int[] as ints;`
@@ -97,8 +103,8 @@ func (q *DBQuerier) IntArray(ctx context.Context) ([][]int32, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "IntArray")
 	rows, err := q.conn.Query(ctx, intArraySQL)
 	if err != nil {
-		return nil, fmt.Errorf("query IntArray: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query IntArray: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[[]int32])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[[]int32])
+	return res, q.errWrap(err)
 }

@@ -28,7 +28,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -40,7 +41,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
@@ -69,9 +75,9 @@ func (q *DBQuerier) VoidOnly(ctx context.Context) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidOnly")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlySQL)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnly: %w", err)
+		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query VoidOnly: %w", err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }
 
 const voidOnlyTwoParamsSQL = `SELECT void_fn_two_params($1, 'text');`
@@ -81,9 +87,9 @@ func (q *DBQuerier) VoidOnlyTwoParams(ctx context.Context, id int32) (pgconn.Com
 	ctx = context.WithValue(ctx, QueryName{}, "VoidOnlyTwoParams")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlyTwoParamsSQL, id)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnlyTwoParams: %w", err)
+		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query VoidOnlyTwoParams: %w", err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }
 
 const voidTwoSQL = `SELECT void_fn(), 'foo' as name;`
@@ -93,10 +99,10 @@ func (q *DBQuerier) VoidTwo(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidTwo")
 	rows, err := q.conn.Query(ctx, voidTwoSQL)
 	if err != nil {
-		return "", fmt.Errorf("query VoidTwo: %w", err)
+		return "", q.errWrap(fmt.Errorf("query VoidTwo: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	return res, q.errWrap(err)
 }
 
 const voidThreeSQL = `SELECT void_fn(), 'foo' as foo, 'bar' as bar;`
@@ -111,10 +117,10 @@ func (q *DBQuerier) VoidThree(ctx context.Context) (VoidThreeRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidThree")
 	rows, err := q.conn.Query(ctx, voidThreeSQL)
 	if err != nil {
-		return VoidThreeRow{}, fmt.Errorf("query VoidThree: %w", err)
+		return VoidThreeRow{}, q.errWrap(fmt.Errorf("query VoidThree: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[VoidThreeRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[VoidThreeRow])
+	return res, q.errWrap(err)
 }
 
 const voidThree2SQL = `SELECT 'foo' as foo, void_fn(), void_fn();`
@@ -124,8 +130,8 @@ func (q *DBQuerier) VoidThree2(ctx context.Context) ([]string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidThree2")
 	rows, err := q.conn.Query(ctx, voidThree2SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query VoidThree2: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query VoidThree2: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[string])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	return res, q.errWrap(err)
 }

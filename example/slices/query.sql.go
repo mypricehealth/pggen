@@ -27,7 +27,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -39,7 +40,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
@@ -68,10 +74,10 @@ func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetBools")
 	rows, err := q.conn.Query(ctx, getBoolsSQL, data)
 	if err != nil {
-		return nil, fmt.Errorf("query GetBools: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GetBools: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]bool])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]bool])
+	return res, q.errWrap(err)
 }
 
 const getOneTimestampSQL = `SELECT $1::timestamp;`
@@ -81,10 +87,10 @@ func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time
 	ctx = context.WithValue(ctx, QueryName{}, "GetOneTimestamp")
 	rows, err := q.conn.Query(ctx, getOneTimestampSQL, data)
 	if err != nil {
-		return nil, fmt.Errorf("query GetOneTimestamp: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GetOneTimestamp: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*time.Time])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*time.Time])
+	return res, q.errWrap(err)
 }
 
 const getManyTimestamptzsSQL = `SELECT *
@@ -95,10 +101,10 @@ func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) (
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamptzs")
 	rows, err := q.conn.Query(ctx, getManyTimestamptzsSQL, data)
 	if err != nil {
-		return nil, fmt.Errorf("query GetManyTimestamptzs: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GetManyTimestamptzs: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[*time.Time])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
+	return res, q.errWrap(err)
 }
 
 const getManyTimestampsSQL = `SELECT *
@@ -109,8 +115,8 @@ func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamps")
 	rows, err := q.conn.Query(ctx, getManyTimestampsSQL, data)
 	if err != nil {
-		return nil, fmt.Errorf("query GetManyTimestamps: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query GetManyTimestamps: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[*time.Time])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
+	return res, q.errWrap(err)
 }

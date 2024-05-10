@@ -16,8 +16,8 @@ func (q *DBQuerier) Bravo(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Bravo")
 	rows, err := q.conn.Query(ctx, bravoSQL)
 	if err != nil {
-		return "", fmt.Errorf("query Bravo: %w", err)
+		return "", q.errWrap(fmt.Errorf("query Bravo: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	return res, q.errWrap(err)
 }

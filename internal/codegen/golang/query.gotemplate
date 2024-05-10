@@ -32,7 +32,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn     genericConn
+	errWrap  func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -44,7 +45,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 {{- range .Declarers}}{{- "\n\n" -}}{{ .Declare $.PkgPath }}{{ end -}}
@@ -64,22 +70,22 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
 {{- if eq $q.ResultKind ":exec" }}
 	cmdTag, err := q.conn.Exec(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
-		return {{ $q.EmitZeroResult }}, fmt.Errorf("exec query {{ $q.Name }}: %w", err)
+		return {{ $q.EmitZeroResult }}, q.errWrap(fmt.Errorf("exec query {{ $q.Name }}: %w", err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 {{- else if eq $q.ResultKind ":rows" }}
     rows, err := q.conn.Query(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
-		return {{ $q.EmitZeroResult }}, fmt.Errorf("rows query {{ $q.Name }}: %w", err)
+		return {{ $q.EmitZeroResult }}, q.errWrap(fmt.Errorf("rows query {{ $q.Name }}: %w", err))
 	}
-	return rows, err
+	return rows, q.errWrap(err)
 {{- else }}
 	rows, err := q.conn.Query(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
-		return {{ $q.EmitZeroResult }}, fmt.Errorf("query {{ $q.Name }}: %w", err)
+		return {{ $q.EmitZeroResult }}, q.errWrap(fmt.Errorf("query {{ $q.Name }}: %w", err))
 	}
-
-	return {{ $q.EmitCollectionFunc }}(rows, {{ $q.EmitRowToFunc }}[{{ $q.EmitSingularResultType }}])
+	res, err := {{ $q.EmitCollectionFunc }}(rows, {{ $q.EmitRowToFunc }}[{{ $q.EmitSingularResultType }}])
+	return res, q.errWrap(err)
 {{- end }}
 }
 {{- end }}

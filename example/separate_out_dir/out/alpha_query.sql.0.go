@@ -26,7 +26,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -38,7 +39,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // Alpha represents the Postgres composite type "alpha".
@@ -76,10 +82,10 @@ func (q *DBQuerier) AlphaNested(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "AlphaNested")
 	rows, err := q.conn.Query(ctx, alphaNestedSQL)
 	if err != nil {
-		return "", fmt.Errorf("query AlphaNested: %w", err)
+		return "", q.errWrap(fmt.Errorf("query AlphaNested: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	return res, q.errWrap(err)
 }
 
 const alphaCompositeArraySQL = `SELECT ARRAY[ROW('key')]::alpha[];`
@@ -89,8 +95,8 @@ func (q *DBQuerier) AlphaCompositeArray(ctx context.Context) ([]Alpha, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "AlphaCompositeArray")
 	rows, err := q.conn.Query(ctx, alphaCompositeArraySQL)
 	if err != nil {
-		return nil, fmt.Errorf("query AlphaCompositeArray: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query AlphaCompositeArray: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]Alpha])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]Alpha])
+	return res, q.errWrap(err)
 }

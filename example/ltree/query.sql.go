@@ -27,7 +27,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -39,7 +40,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
@@ -70,10 +76,10 @@ func (q *DBQuerier) FindTopScienceChildren(ctx context.Context) ([]pgtype.Text, 
 	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildren")
 	rows, err := q.conn.Query(ctx, findTopScienceChildrenSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query FindTopScienceChildren: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query FindTopScienceChildren: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[pgtype.Text])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[pgtype.Text])
+	return res, q.errWrap(err)
 }
 
 const findTopScienceChildrenAggSQL = `SELECT array_agg(path)
@@ -85,10 +91,10 @@ func (q *DBQuerier) FindTopScienceChildrenAgg(ctx context.Context) (pgtype.TextA
 	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildrenAgg")
 	rows, err := q.conn.Query(ctx, findTopScienceChildrenAggSQL)
 	if err != nil {
-		return TextArray{}, fmt.Errorf("query FindTopScienceChildrenAgg: %w", err)
+		return TextArray{}, q.errWrap(fmt.Errorf("query FindTopScienceChildrenAgg: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[pgtype.TextArray])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[pgtype.TextArray])
+	return res, q.errWrap(err)
 }
 
 const insertSampleDataSQL = `INSERT INTO test
@@ -111,9 +117,9 @@ func (q *DBQuerier) InsertSampleData(ctx context.Context) (pgconn.CommandTag, er
 	ctx = context.WithValue(ctx, QueryName{}, "InsertSampleData")
 	cmdTag, err := q.conn.Exec(ctx, insertSampleDataSQL)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertSampleData: %w", err)
+		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query InsertSampleData: %w", err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }
 
 const findLtreeInputSQL = `SELECT
@@ -137,8 +143,8 @@ func (q *DBQuerier) FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inL
 	ctx = context.WithValue(ctx, QueryName{}, "FindLtreeInput")
 	rows, err := q.conn.Query(ctx, findLtreeInputSQL, inLtree, inLtreeArray)
 	if err != nil {
-		return FindLtreeInputRow{}, fmt.Errorf("query FindLtreeInput: %w", err)
+		return FindLtreeInputRow{}, q.errWrap(fmt.Errorf("query FindLtreeInput: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindLtreeInputRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindLtreeInputRow])
+	return res, q.errWrap(err)
 }

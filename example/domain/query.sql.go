@@ -20,7 +20,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -32,7 +33,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
@@ -61,8 +67,8 @@ func (q *DBQuerier) DomainOne(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "DomainOne")
 	rows, err := q.conn.Query(ctx, domainOneSQL)
 	if err != nil {
-		return "", fmt.Errorf("query DomainOne: %w", err)
+		return "", q.errWrap(fmt.Errorf("query DomainOne: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	return res, q.errWrap(err)
 }

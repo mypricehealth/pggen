@@ -22,7 +22,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -34,7 +35,12 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
@@ -64,9 +70,9 @@ func (q *DBQuerier) CreateUser(ctx context.Context, email string, password strin
 	ctx = context.WithValue(ctx, QueryName{}, "CreateUser")
 	cmdTag, err := q.conn.Exec(ctx, createUserSQL, email, password)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query CreateUser: %w", err)
+		return pgconn.CommandTag{}, q.errWrap(fmt.Errorf("exec query CreateUser: %w", err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }
 
 const findUserSQL = `SELECT email, pass from "user"
@@ -82,8 +88,8 @@ func (q *DBQuerier) FindUser(ctx context.Context, email string) (FindUserRow, er
 	ctx = context.WithValue(ctx, QueryName{}, "FindUser")
 	rows, err := q.conn.Query(ctx, findUserSQL, email)
 	if err != nil {
-		return FindUserRow{}, fmt.Errorf("query FindUser: %w", err)
+		return FindUserRow{}, q.errWrap(fmt.Errorf("query FindUser: %w", err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindUserRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindUserRow])
+	return res, q.errWrap(err)
 }

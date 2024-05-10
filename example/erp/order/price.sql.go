@@ -24,10 +24,10 @@ func (q *DBQuerier) FindOrdersByPrice(ctx context.Context, minTotal pgtype.Numer
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByPrice")
 	rows, err := q.conn.Query(ctx, findOrdersByPriceSQL, minTotal)
 	if err != nil {
-		return nil, fmt.Errorf("query FindOrdersByPrice: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query FindOrdersByPrice: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByPriceRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByPriceRow])
+	return res, q.errWrap(err)
 }
 
 const findOrdersMRRSQL = `SELECT date_trunc('month', order_date) AS month, sum(order_total) AS order_mrr
@@ -44,8 +44,8 @@ func (q *DBQuerier) FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, erro
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersMRR")
 	rows, err := q.conn.Query(ctx, findOrdersMRRSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query FindOrdersMRR: %w", err)
+		return nil, q.errWrap(fmt.Errorf("query FindOrdersMRR: %w", err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersMRRRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersMRRRow])
+	return res, q.errWrap(err)
 }
