@@ -64,6 +64,8 @@ type (
 		// The name of the type, like _int4. Array types in Postgres typically
 		// begin with an underscore. From pg_type.typname.
 		Name string
+		// pg_namespace.nspname: name of the schema
+		Schema string
 		// pg_type.typelem: the element type of the array
 		Elem Type
 	}
@@ -100,6 +102,7 @@ type (
 	CompositeType struct {
 		ID          uint32   // pg_class.oid: row identifier
 		Name        string   // pg_class.relname: name of the composite type
+		Schema      string   // pg_namespace.nspname: name of the schema
 		ColumnNames []string // pg_attribute.attname: names of the column, in order
 		ColumnTypes []Type   // pg_attribute JOIN pg_type: information about columns of the composite type
 	}

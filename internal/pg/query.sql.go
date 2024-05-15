@@ -148,11 +148,14 @@ const findArrayTypesSQL = `SELECT
   -- typename: Data type name.
   arr_typ.typname::text AS type_name,
   elem_typ.oid          AS elem_oid,
+  nsp.nspname::text     AS namespace_name,
+  nsp.oid               AS namespace_oid,
   -- typtype: b for a base type, c for a composite type (e.g., a table's
   -- row type), d for a domain, e for an enum type, p for a pseudo-type,
   -- or r for a range type.
   arr_typ.typtype       AS type_kind
 FROM pg_type arr_typ
+  JOIN pg_namespace nsp ON arr_typ.typnamespace = nsp.oid
   JOIN pg_type elem_typ ON arr_typ.typelem = elem_typ.oid
 WHERE arr_typ.typisdefined
   AND arr_typ.typtype = 'b' -- Array types are base types
@@ -173,10 +176,12 @@ WHERE arr_typ.typisdefined
   AND arr_typ.oid = ANY ($1::oid[]);`
 
 type FindArrayTypesRow struct {
-	OID      uint32 `json:"oid"`
-	TypeName string `json:"type_name"`
-	ElemOID  uint32 `json:"elem_oid"`
-	TypeKind byte   `json:"type_kind"`
+	OID           uint32 `json:"oid"`
+	TypeName      string `json:"type_name"`
+	ElemOID       uint32 `json:"elem_oid"`
+	NamespaceName string `json:"namespace_name"`
+	NamespaceOID  uint32 `json:"namespace_oid"`
+	TypeKind      byte   `json:"type_kind"`
 }
 
 // FindArrayTypes implements Querier.FindArrayTypes.
@@ -209,6 +214,8 @@ const findCompositeTypesSQL = `WITH table_cols AS (
 SELECT
   typ.typname::text AS table_type_name,
   typ.oid           AS table_type_oid,
+  nsp.nspname::text AS table_namespace_name,
+  nsp.oid           AS table_namespace_oid,
   table_name,
   col_names,
   col_oids,
@@ -216,19 +223,22 @@ SELECT
   col_not_nulls,
   col_type_names
 FROM pg_type typ
+  JOIN pg_namespace nsp ON typ.typnamespace = nsp.oid
   JOIN table_cols cols ON typ.typrelid = cols.table_oid
 WHERE typ.oid = ANY ($1::oid[])
   AND typ.typtype = 'c';`
 
 type FindCompositeTypesRow struct {
-	TableTypeName string                 `json:"table_type_name"`
-	TableTypeOID  uint32                 `json:"table_type_oid"`
-	TableName     string                 `json:"table_name"`
-	ColNames      []string               `json:"col_names"`
-	ColOIDs       []int                  `json:"col_oids"`
-	ColOrders     []int                  `json:"col_orders"`
-	ColNotNulls   pgtype.FlatArray[bool] `json:"col_not_nulls"`
-	ColTypeNames  []string               `json:"col_type_names"`
+	TableTypeName      string                 `json:"table_type_name"`
+	TableTypeOID       uint32                 `json:"table_type_oid"`
+	TableNamespaceName string                 `json:"table_namespace_name"`
+	TableNamespaceOID  uint32                 `json:"table_namespace_oid"`
+	TableName          string                 `json:"table_name"`
+	ColNames           []string               `json:"col_names"`
+	ColOIDs            []int                  `json:"col_oids"`
+	ColOrders          []int                  `json:"col_orders"`
+	ColNotNulls        pgtype.FlatArray[bool] `json:"col_not_nulls"`
+	ColTypeNames       []string               `json:"col_type_names"`
 }
 
 // FindCompositeTypes implements Querier.FindCompositeTypes.

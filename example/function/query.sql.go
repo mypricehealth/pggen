@@ -72,11 +72,11 @@ func addTypeToRegister(typ string) struct{} {
 	return struct{}{}
 }
 
-var _ = addTypeToRegister("list_item")
+var _ = addTypeToRegister("public.list_item")
 
-var _ = addTypeToRegister("list_stats")
+var _ = addTypeToRegister("public.list_stats")
 
-var _ = addTypeToRegister("_list_item")
+var _ = addTypeToRegister("public._list_item")
 
 const outParamsSQL = `SELECT * FROM out_params();`
 

@@ -71,9 +71,9 @@ func addTypeToRegister(typ string) struct{} {
 	return struct{}{}
 }
 
-var _ = addTypeToRegister("alpha")
+var _ = addTypeToRegister("public.alpha")
 
-var _ = addTypeToRegister("_alpha")
+var _ = addTypeToRegister("public._alpha")
 
 const alphaNestedSQL = `SELECT 'alpha_nested' as output;`
 

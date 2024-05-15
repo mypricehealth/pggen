@@ -155,6 +155,7 @@ func (tf *TypeFetcher) findCompositeTypes(ctx context.Context, uncached map[uint
 		typ := CompositeType{
 			ID:          row.TableTypeOID,
 			Name:        row.TableName,
+			Schema:      row.TableNamespaceName,
 			ColumnNames: colNames,
 			ColumnTypes: colTypes,
 		}
@@ -194,9 +195,10 @@ func (tf *TypeFetcher) findArrayTypes(ctx context.Context, uncached map[uint32]s
 			return nil, fmt.Errorf("find type for array elem %s oid=%d", row.TypeName, row.OID)
 		}
 		types[i] = ArrayType{
-			ID:   row.OID,
-			Name: row.TypeName,
-			Elem: elemType,
+			ID:     row.OID,
+			Name:   row.TypeName,
+			Schema: row.NamespaceName,
+			Elem:   elemType,
 		}
 	}
 	return types, nil

@@ -90,13 +90,13 @@ func addTypeToRegister(typ string) struct{} {
 	return struct{}{}
 }
 
-var _ = addTypeToRegister("arrays")
+var _ = addTypeToRegister("public.arrays")
 
-var _ = addTypeToRegister("blocks")
+var _ = addTypeToRegister("public.blocks")
 
-var _ = addTypeToRegister("user_email")
+var _ = addTypeToRegister("public.user_email")
 
-var _ = addTypeToRegister("_blocks")
+var _ = addTypeToRegister("public._blocks")
 
 const searchScreenshotsSQL = `SELECT
   ss.id,

@@ -81,13 +81,13 @@ func addTypeToRegister(typ string) struct{} {
 	return struct{}{}
 }
 
-var _ = addTypeToRegister("dimensions")
+var _ = addTypeToRegister("public.dimensions")
 
-var _ = addTypeToRegister("product_image_set_type")
+var _ = addTypeToRegister("public.product_image_set_type")
 
-var _ = addTypeToRegister("product_image_type")
+var _ = addTypeToRegister("public.product_image_type")
 
-var _ = addTypeToRegister("_product_image_type")
+var _ = addTypeToRegister("public._product_image_type")
 
 const arrayNested2SQL = `SELECT
   ARRAY [

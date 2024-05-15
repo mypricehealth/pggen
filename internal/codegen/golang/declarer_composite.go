@@ -127,6 +127,8 @@ func (c CompositeTranscoderDeclarer) Declare(pkgPath string) (string, error) {
 	sb.Grow(256)
 
 	sb.WriteString("var _ = addTypeToRegister(\"")
+	sb.WriteString(c.typ.PgComposite.Schema)
+	sb.WriteString(".")
 	sb.WriteString(c.typ.PgComposite.Name)
 	sb.WriteString("\")\n")
 	return sb.String(), nil

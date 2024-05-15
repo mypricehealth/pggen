@@ -75,6 +75,8 @@ func (a ArrayTranscoderDeclarer) Declare(string) (string, error) {
 	funcName := NameArrayTranscoderFunc(a.typ)
 
 	sb.WriteString("var _ = addTypeToRegister(\"")
+	sb.WriteString(a.typ.PgArray.Schema)
+	sb.WriteString(".")
 	sb.WriteString(a.typ.PgArray.Name)
 	sb.WriteString("\")\n")
 	return sb.String(), nil
