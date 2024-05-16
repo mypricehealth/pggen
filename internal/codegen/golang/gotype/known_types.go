@@ -89,6 +89,8 @@ var (
 	ByteSlice     = MustParseKnownType("[]byte", pg.Bytea)
 	Time          = MustParseKnownType("time.Time", pg.Timestamptz)
 	Timep         = MustParseKnownType("*time.Time", pg.Timestamptz)
+	TimeSlice     = MustParseKnownType("[]time.Time", pg.TimestamptzArray)
+	TimepSlice    = MustParseKnownType("[]*time.Time", pg.TimestamptzArray)
 	Decimal       = MustParseKnownType("github.com/shopspring/decimal.Decimal", pg.Numeric)
 	Decimalp      = MustParseKnownType("*github.com/shopspring/decimal.Decimal", pg.Numeric)
 )
@@ -232,7 +234,7 @@ var knownTypesByOID = map[uint32]knownGoType{
 	pgtype.TimestampArrayOID:   {PgTimestampArray, nil, nil},
 	pgtype.DateArrayOID:        {PgDateArray, nil, nil},
 	pgtype.TimestamptzOID:      {PgTimestamptz, Timep, Time},
-	pgtype.TimestamptzArrayOID: {PgTimestamptzArray, nil, nil},
+	pgtype.TimestamptzArrayOID: {PgTimestamptzArray, TimepSlice, TimeSlice},
 	pgtype.IntervalOID:         {PgInterval, nil, nil},
 	pgtype.NumericArrayOID:     {PgNumericArray, nil, nil},
 	pgtype.BitOID:              {PgBit, nil, nil},
@@ -240,8 +242,8 @@ var knownTypesByOID = map[uint32]knownGoType{
 	pgoid.Void:                 {PgVoid, nil, nil},
 	pgtype.NumericOID:          {PgNumeric, Decimalp, Decimal},
 	pgtype.RecordOID:           {PgRecord, nil, nil},
-	pgtype.UUIDOID:             {PgUUID, nil, nil},
-	pgtype.UUIDArrayOID:        {PgUUIDArray, nil, nil},
+	pgtype.UUIDOID:             {PgUUID, Stringp, String},
+	pgtype.UUIDArrayOID:        {PgUUIDArray, StringpSlice, StringSlice},
 	pgtype.JSONBOID:            {PgJSONB, Stringp, String},
 	pgtype.JSONBArrayOID:       {PgJSONBArray, StringpSlice, StringSlice},
 	pgtype.Int4rangeOID:        {PgInt4range, nil, nil},
