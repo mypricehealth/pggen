@@ -8,6 +8,9 @@ package {{.GoPkg}}
 import (
 {{ range $pkg := .Imports.Get }}	"{{$pkg}}"
 {{ end -}}
+{{- if .IsLeader -}}	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
+{{- "\n" -}}
+{{- end -}}
 )
 
 

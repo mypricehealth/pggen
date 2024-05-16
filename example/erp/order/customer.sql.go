@@ -5,10 +5,12 @@ package order
 import (
 	"context"
 	"fmt"
+	"time"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 type QueryName struct{}
@@ -25,7 +27,7 @@ type Querier interface {
 
 	InsertOrder(ctx context.Context, params InsertOrderParams) (InsertOrderRow, error)
 
-	FindOrdersByPrice(ctx context.Context, minTotal pgtype.Numeric) ([]FindOrdersByPriceRow, error)
+	FindOrdersByPrice(ctx context.Context, minTotal decimal.Decimal) ([]FindOrdersByPriceRow, error)
 
 	FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, error)
 }
@@ -56,6 +58,7 @@ func NewQuerier(conn genericConn) *DBQuerier {
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
 func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
+	pgxdecimal.Register(conn.TypeMap())
 	for _, typ := range typesToRegister {
 		dt, err := conn.LoadType(ctx, typ)
 		if err != nil {
@@ -99,10 +102,10 @@ FROM orders
 WHERE customer_id = $1;`
 
 type FindOrdersByCustomerRow struct {
-	OrderID    int32              `json:"order_id"`
-	OrderDate  pgtype.Timestamptz `json:"order_date"`
-	OrderTotal pgtype.Numeric     `json:"order_total"`
-	CustomerID *int32             `json:"customer_id"`
+	OrderID    int32           `json:"order_id"`
+	OrderDate  time.Time       `json:"order_date"`
+	OrderTotal decimal.Decimal `json:"order_total"`
+	CustomerID *int32          `json:"customer_id"`
 }
 
 // FindOrdersByCustomer implements Querier.FindOrdersByCustomer.
@@ -172,16 +175,16 @@ VALUES ($1, $2, $3)
 RETURNING *;`
 
 type InsertOrderParams struct {
-	OrderDate  pgtype.Timestamptz `json:"order_date"`
-	OrderTotal pgtype.Numeric     `json:"order_total"`
-	CustID     int32              `json:"cust_id"`
+	OrderDate  time.Time       `json:"order_date"`
+	OrderTotal decimal.Decimal `json:"order_total"`
+	CustID     int32           `json:"cust_id"`
 }
 
 type InsertOrderRow struct {
-	OrderID    int32              `json:"order_id"`
-	OrderDate  pgtype.Timestamptz `json:"order_date"`
-	OrderTotal pgtype.Numeric     `json:"order_total"`
-	CustomerID *int32             `json:"customer_id"`
+	OrderID    int32           `json:"order_id"`
+	OrderDate  time.Time       `json:"order_date"`
+	OrderTotal decimal.Decimal `json:"order_total"`
+	CustomerID *int32          `json:"customer_id"`
 }
 
 // InsertOrder implements Querier.InsertOrder.

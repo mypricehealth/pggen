@@ -160,6 +160,7 @@ func (c ConstantDeclarer) Declare(string) (string, error) { return c.str, nil }
 
 const typeResolverInitDecl = `// RegisterTypes should be run in config.AfterConnect to load custom types
 func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
+	pgxdecimal.Register(conn.TypeMap())
 	for _, typ := range typesToRegister {
 		dt, err := conn.LoadType(ctx, typ)
 		if err != nil {

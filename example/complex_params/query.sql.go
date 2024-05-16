@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -70,6 +71,7 @@ type ProductImageType struct {
 
 // RegisterTypes should be run in config.AfterConnect to load custom types
 func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
+	pgxdecimal.Register(conn.TypeMap())
 	for _, typ := range typesToRegister {
 		dt, err := conn.LoadType(ctx, typ)
 		if err != nil {

@@ -87,6 +87,10 @@ var (
 	Float64Slice  = MustParseKnownType("[]float64", pg.Float8Array)
 	Float64pSlice = MustParseKnownType("[]*float64", pg.Float8Array)
 	ByteSlice     = MustParseKnownType("[]byte", pg.Bytea)
+	Time          = MustParseKnownType("time.Time", pg.Timestamptz)
+	Timep         = MustParseKnownType("*time.Time", pg.Timestamptz)
+	Decimal       = MustParseKnownType("github.com/shopspring/decimal.Decimal", pg.Numeric)
+	Decimalp      = MustParseKnownType("*github.com/shopspring/decimal.Decimal", pg.Numeric)
 )
 
 // pgtype types prefixed with "pg".
@@ -142,7 +146,7 @@ var (
 	PgTimestamptz      = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Timestamptz", pg.Timestamptz)
 	PgTimestamptzArray = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.FlatArray[time.Time]", pg.TimestamptzArray)
 	PgInterval         = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Interval", pg.Interval)
-	PgNumericArray     = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Numeric[pgtype.Numeric]", pg.NumericArray)
+	PgNumericArray     = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.FlatArray[pgtype.Numeric]", pg.NumericArray)
 	PgBit              = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Bit", pg.Bit)
 	PgVarbit           = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Varbit", pg.Varbit)
 	PgVoid             = &VoidType{}
@@ -227,14 +231,14 @@ var knownTypesByOID = map[uint32]knownGoType{
 	pgtype.TimestampOID:        {PgTimestamp, nil, nil},
 	pgtype.TimestampArrayOID:   {PgTimestampArray, nil, nil},
 	pgtype.DateArrayOID:        {PgDateArray, nil, nil},
-	pgtype.TimestamptzOID:      {PgTimestamptz, nil, nil},
+	pgtype.TimestamptzOID:      {PgTimestamptz, Timep, Time},
 	pgtype.TimestamptzArrayOID: {PgTimestamptzArray, nil, nil},
 	pgtype.IntervalOID:         {PgInterval, nil, nil},
 	pgtype.NumericArrayOID:     {PgNumericArray, nil, nil},
 	pgtype.BitOID:              {PgBit, nil, nil},
 	pgtype.VarbitOID:           {PgVarbit, nil, nil},
 	pgoid.Void:                 {PgVoid, nil, nil},
-	pgtype.NumericOID:          {PgNumeric, nil, nil},
+	pgtype.NumericOID:          {PgNumeric, Decimalp, Decimal},
 	pgtype.RecordOID:           {PgRecord, nil, nil},
 	pgtype.UUIDOID:             {PgUUID, nil, nil},
 	pgtype.UUIDArrayOID:        {PgUUIDArray, nil, nil},
