@@ -87,6 +87,9 @@ var (
 	Float64Slice  = MustParseKnownType("[]float64", pg.Float8Array)
 	Float64pSlice = MustParseKnownType("[]*float64", pg.Float8Array)
 	ByteSlice     = MustParseKnownType("[]byte", pg.Bytea)
+	JSON          = MustParseKnownType("encoding/json.RawMessage", pg.JSON)
+	JSONB         = MustParseKnownType("encoding/json.RawMessage", pg.JSONB)
+	JSONBArray    = MustParseKnownType("encoding/[]json.RawMessage", pg.JSONBArray)
 )
 
 // pgtype types prefixed with "pg".
@@ -103,7 +106,6 @@ var (
 	PgTID              = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.TID", pg.TID)
 	PgXID              = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.XID", pg.XID)
 	PgCID              = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.CID", pg.CID)
-	PgJSON             = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.JSON", pg.JSON)
 	PgPoint            = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Point", pg.Point)
 	PgLseg             = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Lseg", pg.Lseg)
 	PgPath             = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Path", pg.Path)
@@ -150,8 +152,6 @@ var (
 	PgRecord           = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Record", pg.Record)
 	PgUUID             = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.UUID", pg.UUID)
 	PgUUIDArray        = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.FlatArray[[16]byte]", pg.UUIDArray)
-	PgJSONB            = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.JSONB", pg.JSONB)
-	PgJSONBArray       = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.FlatArray[github.com/jackc/pgx/v5/pgtype.JSONB]", pg.JSONBArray)
 	PgInt4range        = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Int4range", pg.Int4range)
 	PgNumrange         = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Numrange", pg.Numrange)
 	PgTsrange          = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Tsrange", pg.Tsrange)
@@ -190,7 +190,7 @@ var knownTypesByOID = map[uint32]knownGoType{
 	pgtype.TIDOID:              {PgTID, nil, nil},
 	pgtype.XIDOID:              {PgXID, nil, nil},
 	pgtype.CIDOID:              {PgCID, nil, nil},
-	pgtype.JSONOID:             {PgJSON, nil, nil},
+	pgtype.JSONOID:             {JSON, nil, nil},
 	pgtype.PointOID:            {PgPoint, nil, nil},
 	pgtype.LsegOID:             {PgLseg, nil, nil},
 	pgtype.PathOID:             {PgPath, nil, nil},
@@ -238,8 +238,8 @@ var knownTypesByOID = map[uint32]knownGoType{
 	pgtype.RecordOID:           {PgRecord, nil, nil},
 	pgtype.UUIDOID:             {PgUUID, nil, nil},
 	pgtype.UUIDArrayOID:        {PgUUIDArray, nil, nil},
-	pgtype.JSONBOID:            {PgJSONB, nil, nil},
-	pgtype.JSONBArrayOID:       {PgJSONBArray, nil, nil},
+	pgtype.JSONBOID:            {JSONB, nil, nil},
+	pgtype.JSONBArrayOID:       {JSONBArray, nil, nil},
 	pgtype.Int4rangeOID:        {PgInt4range, nil, nil},
 	pgtype.NumrangeOID:         {PgNumrange, nil, nil},
 	pgtype.TsrangeOID:          {PgTsrange, nil, nil},
