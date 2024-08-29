@@ -3,15 +3,14 @@ package pginfer
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgconn"
 	"strings"
 	"time"
 
-	"github.com/jackc/pgproto3/v2"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
-	"github.com/jschaf/pggen/internal/ast"
-	"github.com/jschaf/pggen/internal/pg"
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 const defaultTimeout = 3 * time.Second
@@ -45,6 +44,8 @@ type InputParam struct {
 	PgName string
 	// The postgres type of this param as reported by Postgres.
 	PgType pg.Type
+	// Whether the input parameter is optional
+	IsOptional bool
 }
 
 // OutputColumn is a single column output from a select query or returning
@@ -74,22 +75,31 @@ func NewInferrer(conn *pgx.Conn) *Inferrer {
 	}
 }
 
+func (inf *Inferrer) RunSetup(query string) (pgconn.CommandTag, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	return inf.conn.Exec(ctx, query)
+}
+
 func (inf *Inferrer) InferTypes(query *ast.SourceQuery) (TypedQuery, error) {
 	inputs, outputs, err := inf.prepareTypes(query)
 	if err != nil {
 		return TypedQuery{}, fmt.Errorf("infer output types for query: %w", err)
 	}
-	if query.ResultKind != ast.ResultKindExec && len(outputs) == 0 {
-		return TypedQuery{}, fmt.Errorf(
-			"query %s has incompatible result kind %s; the query doesn't return any columns; "+
-				"use :exec if query shouldn't return any columns",
-			query.Name, query.ResultKind)
-	}
-	if query.ResultKind != ast.ResultKindExec && countVoids(outputs) == len(outputs) {
-		return TypedQuery{}, fmt.Errorf(
-			"query %s has incompatible result kind %s; the query only has void columns; "+
-				"use :exec if query shouldn't return any columns",
-			query.Name, query.ResultKind)
+	if query.ResultKind != ast.ResultKindExec && query.ResultKind != ast.ResultKindSetup {
+		if len(outputs) == 0 {
+			return TypedQuery{}, fmt.Errorf(
+				"query %s has incompatible result kind %s; the query doesn't return any columns; "+
+					"use :exec if query shouldn't return any columns",
+				query.Name, query.ResultKind)
+		}
+		if countVoids(outputs) == len(outputs) {
+			return TypedQuery{}, fmt.Errorf(
+				"query %s has incompatible result kind %s; the query only has void columns; "+
+					"use :exec if query shouldn't return any columns",
+				query.Name, query.ResultKind)
+		}
 	}
 	doc := extractDoc(query)
 	return TypedQuery{
@@ -145,8 +155,8 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	}
 
 	// Validate.
-	if len(stmtDesc.ParamOIDs) != len(query.ParamNames) {
-		return nil, nil, fmt.Errorf("expected %d parameter types for query; got %d", len(query.ParamNames), len(stmtDesc.ParamOIDs))
+	if len(stmtDesc.ParamOIDs) != len(query.Params) {
+		return nil, nil, fmt.Errorf("expected %d parameter types for query; got %d", len(query.Params), len(stmtDesc.ParamOIDs))
 	}
 
 	// Build input params.
@@ -157,13 +167,17 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 			return nil, nil, fmt.Errorf("fetch oid types: %w", err)
 		}
 		for i, oid := range stmtDesc.ParamOIDs {
-			inputType, ok := types[pgtype.OID(oid)]
+			param := query.Params[i]
+
+			inputType, ok := types[uint32(oid)]
 			if !ok {
-				return nil, nil, fmt.Errorf("no postgres type name found for parameter %s with oid %d", query.ParamNames[i], oid)
+				return nil, nil, fmt.Errorf("no postgres type name found for parameter %s with oid %d", param.Name, oid)
 			}
+
 			inputParams = append(inputParams, InputParam{
-				PgName: query.ParamNames[i],
-				PgType: inputType,
+				PgName:     param.Name,
+				PgType:     inputType,
+				IsOptional: param.IsOptional,
 			})
 		}
 	}
@@ -187,7 +201,7 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	// Create output columns
 	var outputColumns []OutputColumn
 	for i, desc := range stmtDesc.Fields {
-		pgType, ok := outputTypes[pgtype.OID(desc.DataTypeOID)]
+		pgType, ok := outputTypes[uint32(desc.DataTypeOID)]
 		if !ok {
 			return nil, nil, fmt.Errorf("no postgrestype name found for column %s with oid %d", string(desc.Name), desc.DataTypeOID)
 		}
@@ -202,7 +216,7 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 
 // inferOutputNullability infers which of the output columns produced by the
 // query and described by descs can be null.
-func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgproto3.FieldDescription) ([]bool, error) {
+func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgconn.FieldDescription) ([]bool, error) {
 	if len(descs) == 0 {
 		return nil, nil
 	}
@@ -215,7 +229,7 @@ func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgpr
 	for i, desc := range descs {
 		if desc.TableOID > 0 {
 			columnKeys[i] = pg.ColumnKey{
-				TableOID: pgtype.OID(desc.TableOID),
+				TableOID: uint32(desc.TableOID),
 				Number:   desc.TableAttributeNumber,
 			}
 		}
@@ -244,8 +258,8 @@ func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgpr
 }
 
 func createParamArgs(query *ast.SourceQuery) []interface{} {
-	args := make([]interface{}, len(query.ParamNames))
-	for i := range query.ParamNames {
+	args := make([]interface{}, len(query.Params))
+	for i := range query.Params {
 		args[i] = nil
 	}
 	return args

@@ -1,11 +1,12 @@
 package parser
 
 import (
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/jschaf/pggen/internal/ast"
 	gotok "go/token"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/mypricehealth/pggen/internal/ast"
 )
 
 func ignoreCommentPos() cmp.Option {
@@ -48,7 +49,7 @@ func TestParseFile_Queries(t *testing.T) {
 				Doc:         &ast.CommentGroup{List: []*ast.LineComment{{Text: "-- name: Qux   :exec"}}},
 				SourceSQL:   "SELECT pggen.arg('Bar');",
 				PreparedSQL: "SELECT $1;",
-				ParamNames:  []string{"Bar"},
+				Params:      []ast.Param{{Name: "Bar"}},
 				ResultKind:  ast.ResultKindExec,
 			},
 		},
@@ -59,7 +60,7 @@ func TestParseFile_Queries(t *testing.T) {
 				Doc:         &ast.CommentGroup{List: []*ast.LineComment{{Text: "-- name: Qux   :exec"}}},
 				SourceSQL:   "SELECT pggen.arg ('Bar');",
 				PreparedSQL: "SELECT $1;",
-				ParamNames:  []string{"Bar"},
+				Params:      []ast.Param{{Name: "Bar"}},
 				ResultKind:  ast.ResultKindExec,
 			},
 		},
@@ -70,7 +71,7 @@ func TestParseFile_Queries(t *testing.T) {
 				Doc:         &ast.CommentGroup{List: []*ast.LineComment{{Text: "-- name: Qux :one"}}},
 				SourceSQL:   "SELECT pggen.arg('A$_$$B123');",
 				PreparedSQL: "SELECT $1;",
-				ParamNames:  []string{"A$_$$B123"},
+				Params:      []ast.Param{{Name: "A$_$$B123"}},
 				ResultKind:  ast.ResultKindOne,
 			},
 		},
@@ -81,7 +82,7 @@ func TestParseFile_Queries(t *testing.T) {
 				Doc:         &ast.CommentGroup{List: []*ast.LineComment{{Text: "-- name: Qux :many"}}},
 				SourceSQL:   "SELECT pggen.arg('Bar'), pggen.arg('Qux'), pggen.arg('Bar');",
 				PreparedSQL: "SELECT $1, $2, $1;",
-				ParamNames:  []string{"Bar", "Qux"},
+				Params:      []ast.Param{{Name: "Bar"}, {Name: "Qux"}},
 				ResultKind:  ast.ResultKindMany,
 			},
 		},
@@ -92,7 +93,7 @@ func TestParseFile_Queries(t *testing.T) {
 				Doc:         &ast.CommentGroup{List: []*ast.LineComment{{Text: "-- name: Qux :many"}}},
 				SourceSQL:   "SELECT /*pggen.arg('Bar'),*/ pggen.arg('Qux'), pggen.arg('Bar');",
 				PreparedSQL: "SELECT /*pggen.arg('Bar'),*/ $1, $2;",
-				ParamNames:  []string{"Qux", "Bar"},
+				Params:      []ast.Param{{Name: "Qux"}, {Name: "Bar"}},
 				ResultKind:  ast.ResultKindMany,
 			},
 		},
@@ -103,7 +104,7 @@ func TestParseFile_Queries(t *testing.T) {
 				Doc:         &ast.CommentGroup{List: []*ast.LineComment{{Text: "-- name: Qux :many proto-type=foo.Bar"}}},
 				SourceSQL:   "SELECT 1;",
 				PreparedSQL: "SELECT 1;",
-				ParamNames:  nil,
+				Params:      nil,
 				ResultKind:  ast.ResultKindMany,
 				Pragmas:     ast.Pragmas{ProtobufType: "foo.Bar"},
 			},
@@ -115,7 +116,7 @@ func TestParseFile_Queries(t *testing.T) {
 				Doc:         &ast.CommentGroup{List: []*ast.LineComment{{Text: "-- name: Qux :many proto-type=Bar"}}},
 				SourceSQL:   "SELECT 1;",
 				PreparedSQL: "SELECT 1;",
-				ParamNames:  nil,
+				Params:      nil,
 				ResultKind:  ast.ResultKindMany,
 				Pragmas:     ast.Pragmas{ProtobufType: "Bar"},
 			},

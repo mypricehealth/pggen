@@ -5,10 +5,14 @@ package void
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"sync"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -26,8 +30,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn   // underlying Postgres transport to use
-	types *typeResolver // resolve types by name
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -39,46 +42,17 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn, types: newTypeResolver()}
-}
-
-// typeResolver looks up the pgtype.ValueTranscoder by Postgres type name.
-type typeResolver struct {
-	connInfo *pgtype.ConnInfo // types by Postgres type name
-}
-
-func newTypeResolver() *typeResolver {
-	ci := pgtype.NewConnInfo()
-	return &typeResolver{connInfo: ci}
-}
-
-// findValue find the OID, and pgtype.ValueTranscoder for a Postgres type name.
-func (tr *typeResolver) findValue(name string) (uint32, pgtype.ValueTranscoder, bool) {
-	typ, ok := tr.connInfo.DataTypeForName(name)
-	if !ok {
-		return 0, nil, false
-	}
-	v := pgtype.NewValue(typ.Value)
-	return typ.OID, v.(pgtype.ValueTranscoder), true
-}
-
-// setValue sets the value of a ValueTranscoder to a value that should always
-// work and panics if it fails.
-func (tr *typeResolver) setValue(vt pgtype.ValueTranscoder, val interface{}) pgtype.ValueTranscoder {
-	if err := vt.Set(val); err != nil {
-		panic(fmt.Sprintf("set ValueTranscoder %T to %+v: %s", vt, val, err))
-	}
-	return vt
+	return &DBQuerier{conn: conn}
 }
 
 const voidOnlySQL = `SELECT void_fn();`
 
 // VoidOnly implements Querier.VoidOnly.
 func (q *DBQuerier) VoidOnly(ctx context.Context) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidOnly")
+	ctx = context.WithValue(ctx, QueryName{}, "VoidOnly")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlySQL)
 	if err != nil {
-		return cmdTag, fmt.Errorf("exec query VoidOnly: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnly: %w", err)
 	}
 	return cmdTag, err
 }
@@ -87,10 +61,10 @@ const voidOnlyTwoParamsSQL = `SELECT void_fn_two_params($1, 'text');`
 
 // VoidOnlyTwoParams implements Querier.VoidOnlyTwoParams.
 func (q *DBQuerier) VoidOnlyTwoParams(ctx context.Context, id int32) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidOnlyTwoParams")
+	ctx = context.WithValue(ctx, QueryName{}, "VoidOnlyTwoParams")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlyTwoParamsSQL, id)
 	if err != nil {
-		return cmdTag, fmt.Errorf("exec query VoidOnlyTwoParams: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnlyTwoParams: %w", err)
 	}
 	return cmdTag, err
 }
@@ -99,13 +73,13 @@ const voidTwoSQL = `SELECT void_fn(), 'foo' as name;`
 
 // VoidTwo implements Querier.VoidTwo.
 func (q *DBQuerier) VoidTwo(ctx context.Context) (string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidTwo")
-	row := q.conn.QueryRow(ctx, voidTwoSQL)
-	var item string
-	if err := row.Scan(nil, &item); err != nil {
-		return item, fmt.Errorf("query VoidTwo: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "VoidTwo")
+	rows, err := q.conn.Query(ctx, voidTwoSQL)
+	if err != nil {
+		return "", fmt.Errorf("query VoidTwo: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 }
 
 const voidThreeSQL = `SELECT void_fn(), 'foo' as foo, 'bar' as bar;`
@@ -117,60 +91,79 @@ type VoidThreeRow struct {
 
 // VoidThree implements Querier.VoidThree.
 func (q *DBQuerier) VoidThree(ctx context.Context) (VoidThreeRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidThree")
-	row := q.conn.QueryRow(ctx, voidThreeSQL)
-	var item VoidThreeRow
-	if err := row.Scan(nil, &item.Foo, &item.Bar); err != nil {
-		return item, fmt.Errorf("query VoidThree: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "VoidThree")
+	rows, err := q.conn.Query(ctx, voidThreeSQL)
+	if err != nil {
+		return VoidThreeRow{}, fmt.Errorf("query VoidThree: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[VoidThreeRow])
 }
 
 const voidThree2SQL = `SELECT 'foo' as foo, void_fn(), void_fn();`
 
 // VoidThree2 implements Querier.VoidThree2.
 func (q *DBQuerier) VoidThree2(ctx context.Context) ([]string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "VoidThree2")
+	ctx = context.WithValue(ctx, QueryName{}, "VoidThree2")
 	rows, err := q.conn.Query(ctx, voidThree2SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query VoidThree2: %w", err)
 	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var item string
-		if err := rows.Scan(&item, nil, nil); err != nil {
-			return nil, fmt.Errorf("scan VoidThree2 row: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close VoidThree2 rows: %w", err)
-	}
-	return items, err
+
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-// textPreferrer wraps a pgtype.ValueTranscoder and sets the preferred encoding
-// format to text instead binary (the default). pggen uses the text format
-// when the OID is unknownOID because the binary format requires the OID.
-// Typically occurs for unregistered types.
-type textPreferrer struct {
-	pgtype.ValueTranscoder
+type scanCacheKey struct {
+	oid      uint32
+	format   int16
 	typeName string
 }
 
-// PreferredParamFormat implements pgtype.ParamFormatPreferrer.
-func (t textPreferrer) PreferredParamFormat() int16 { return pgtype.TextFormatCode }
+var (
+	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
+	plansMu sync.RWMutex
+)
 
-func (t textPreferrer) NewTypeValue() pgtype.Value {
-	return textPreferrer{ValueTranscoder: pgtype.NewValue(t.ValueTranscoder).(pgtype.ValueTranscoder), typeName: t.typeName}
+func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return plan
 }
 
-func (t textPreferrer) TypeName() string {
-	return t.typeName
+type ptrScanner[T any] struct {
+	basePlan pgtype.ScanPlan
 }
 
-// unknownOID means we don't know the OID for a type. This is okay for decoding
-// because pgx call DecodeText or DecodeBinary without requiring the OID. For
-// encoding parameters, pggen uses textPreferrer if the OID is unknown.
-const unknownOID = 0
+func (s ptrScanner[T]) Scan(src []byte, dst any) error {
+	if src == nil {
+		return nil
+	}
+	d := dst.(**T)
+	*d = new(T)
+	return s.basePlan.Scan(src, *d)
+}
+
+func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	basePlan := planScan(codec, fd, target)
+	ptrPlan := ptrScanner[T]{basePlan}
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return ptrPlan
+}

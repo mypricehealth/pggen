@@ -1,12 +1,16 @@
 package golang
 
 import (
+	"bytes"
 	"fmt"
-	"github.com/jschaf/pggen/internal/errs"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"text/template"
+
+	"github.com/mypricehealth/pggen/internal/errs"
+	"golang.org/x/tools/imports"
 )
 
 // Emitter writes a templated query file to a file.
@@ -96,13 +100,32 @@ func (em Emitter) chooseOutputFiles(tfs []TemplatedFile) []string {
 // emitQueryFile emits a single query file.
 func (em Emitter) emitQueryFile(outRelPath string, tf TemplatedFile) (mErr error) {
 	out := filepath.Join(em.outDir, outRelPath)
+
+	bytesBuf := &bytes.Buffer{}
+	if err := em.tmpl.ExecuteTemplate(bytesBuf, "gen_query", tf); err != nil {
+		return fmt.Errorf("execute generated query file template %s: %w", out, err)
+	}
+
+	inputBuf := bytesBuf.Bytes()
+
+	buf, err := imports.Process(out, inputBuf, nil)
+	if err != nil {
+		buf = inputBuf
+
+		// Log as an error but still write the file out to make it easier to view.
+		log.Println(fmt.Errorf("format generated query file %s: %w", out, err))
+	}
+
 	file, err := os.OpenFile(out, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	defer errs.Capture(&mErr, file.Close, "close emit query file")
 	if err != nil {
 		return fmt.Errorf("open generated query file for writing: %w", err)
 	}
-	if err := em.tmpl.ExecuteTemplate(file, "gen_query", tf); err != nil {
-		return fmt.Errorf("execute generated query file template %s: %w", out, err)
+
+	_, err = file.Write(buf)
+	if err != nil {
+		return fmt.Errorf("write generated query file %s: %w", out, err)
 	}
+
 	return nil
 }

@@ -5,10 +5,14 @@ package order
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"sync"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -30,8 +34,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn   // underlying Postgres transport to use
-	types *typeResolver // resolve types by name
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -43,36 +46,7 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn, types: newTypeResolver()}
-}
-
-// typeResolver looks up the pgtype.ValueTranscoder by Postgres type name.
-type typeResolver struct {
-	connInfo *pgtype.ConnInfo // types by Postgres type name
-}
-
-func newTypeResolver() *typeResolver {
-	ci := pgtype.NewConnInfo()
-	return &typeResolver{connInfo: ci}
-}
-
-// findValue find the OID, and pgtype.ValueTranscoder for a Postgres type name.
-func (tr *typeResolver) findValue(name string) (uint32, pgtype.ValueTranscoder, bool) {
-	typ, ok := tr.connInfo.DataTypeForName(name)
-	if !ok {
-		return 0, nil, false
-	}
-	v := pgtype.NewValue(typ.Value)
-	return typ.OID, v.(pgtype.ValueTranscoder), true
-}
-
-// setValue sets the value of a ValueTranscoder to a value that should always
-// work and panics if it fails.
-func (tr *typeResolver) setValue(vt pgtype.ValueTranscoder, val interface{}) pgtype.ValueTranscoder {
-	if err := vt.Set(val); err != nil {
-		panic(fmt.Sprintf("set ValueTranscoder %T to %+v: %s", vt, val, err))
-	}
-	return vt
+	return &DBQuerier{conn: conn}
 }
 
 const createTenantSQL = `INSERT INTO tenant (tenant_id, name)
@@ -87,13 +61,13 @@ type CreateTenantRow struct {
 
 // CreateTenant implements Querier.CreateTenant.
 func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (CreateTenantRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "CreateTenant")
-	row := q.conn.QueryRow(ctx, createTenantSQL, key, name)
-	var item CreateTenantRow
-	if err := row.Scan(&item.TenantID, &item.Rname, &item.Name); err != nil {
-		return item, fmt.Errorf("query CreateTenant: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "CreateTenant")
+	rows, err := q.conn.Query(ctx, createTenantSQL, key, name)
+	if err != nil {
+		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
 }
 
 const findOrdersByCustomerSQL = `SELECT *
@@ -109,24 +83,13 @@ type FindOrdersByCustomerRow struct {
 
 // FindOrdersByCustomer implements Querier.FindOrdersByCustomer.
 func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) ([]FindOrdersByCustomerRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindOrdersByCustomer")
+	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByCustomer")
 	rows, err := q.conn.Query(ctx, findOrdersByCustomerSQL, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", err)
 	}
-	defer rows.Close()
-	items := []FindOrdersByCustomerRow{}
-	for rows.Next() {
-		var item FindOrdersByCustomerRow
-		if err := rows.Scan(&item.OrderID, &item.OrderDate, &item.OrderTotal, &item.CustomerID); err != nil {
-			return nil, fmt.Errorf("scan FindOrdersByCustomer row: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindOrdersByCustomer rows: %w", err)
-	}
-	return items, err
+
+	return pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
 }
 
 const findProductsInOrderSQL = `SELECT o.order_id, p.product_id, p.name
@@ -143,24 +106,13 @@ type FindProductsInOrderRow struct {
 
 // FindProductsInOrder implements Querier.FindProductsInOrder.
 func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]FindProductsInOrderRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindProductsInOrder")
+	ctx = context.WithValue(ctx, QueryName{}, "FindProductsInOrder")
 	rows, err := q.conn.Query(ctx, findProductsInOrderSQL, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindProductsInOrder: %w", err)
 	}
-	defer rows.Close()
-	items := []FindProductsInOrderRow{}
-	for rows.Next() {
-		var item FindProductsInOrderRow
-		if err := rows.Scan(&item.OrderID, &item.ProductID, &item.Name); err != nil {
-			return nil, fmt.Errorf("scan FindProductsInOrder row: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindProductsInOrder rows: %w", err)
-	}
-	return items, err
+
+	return pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
 }
 
 const insertCustomerSQL = `INSERT INTO customer (first_name, last_name, email)
@@ -182,13 +134,13 @@ type InsertCustomerRow struct {
 
 // InsertCustomer implements Querier.InsertCustomer.
 func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerParams) (InsertCustomerRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "InsertCustomer")
-	row := q.conn.QueryRow(ctx, insertCustomerSQL, params.FirstName, params.LastName, params.Email)
-	var item InsertCustomerRow
-	if err := row.Scan(&item.CustomerID, &item.FirstName, &item.LastName, &item.Email); err != nil {
-		return item, fmt.Errorf("query InsertCustomer: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "InsertCustomer")
+	rows, err := q.conn.Query(ctx, insertCustomerSQL, params.FirstName, params.LastName, params.Email)
+	if err != nil {
+		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
 }
 
 const insertOrderSQL = `INSERT INTO orders (order_date, order_total, customer_id)
@@ -210,36 +162,66 @@ type InsertOrderRow struct {
 
 // InsertOrder implements Querier.InsertOrder.
 func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (InsertOrderRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "InsertOrder")
-	row := q.conn.QueryRow(ctx, insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
-	var item InsertOrderRow
-	if err := row.Scan(&item.OrderID, &item.OrderDate, &item.OrderTotal, &item.CustomerID); err != nil {
-		return item, fmt.Errorf("query InsertOrder: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "InsertOrder")
+	rows, err := q.conn.Query(ctx, insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
+	if err != nil {
+		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
 }
 
-// textPreferrer wraps a pgtype.ValueTranscoder and sets the preferred encoding
-// format to text instead binary (the default). pggen uses the text format
-// when the OID is unknownOID because the binary format requires the OID.
-// Typically occurs for unregistered types.
-type textPreferrer struct {
-	pgtype.ValueTranscoder
+type scanCacheKey struct {
+	oid      uint32
+	format   int16
 	typeName string
 }
 
-// PreferredParamFormat implements pgtype.ParamFormatPreferrer.
-func (t textPreferrer) PreferredParamFormat() int16 { return pgtype.TextFormatCode }
+var (
+	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
+	plansMu sync.RWMutex
+)
 
-func (t textPreferrer) NewTypeValue() pgtype.Value {
-	return textPreferrer{ValueTranscoder: pgtype.NewValue(t.ValueTranscoder).(pgtype.ValueTranscoder), typeName: t.typeName}
+func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return plan
 }
 
-func (t textPreferrer) TypeName() string {
-	return t.typeName
+type ptrScanner[T any] struct {
+	basePlan pgtype.ScanPlan
 }
 
-// unknownOID means we don't know the OID for a type. This is okay for decoding
-// because pgx call DecodeText or DecodeBinary without requiring the OID. For
-// encoding parameters, pggen uses textPreferrer if the OID is unknown.
-const unknownOID = 0
+func (s ptrScanner[T]) Scan(src []byte, dst any) error {
+	if src == nil {
+		return nil
+	}
+	d := dst.(**T)
+	*d = new(T)
+	return s.basePlan.Scan(src, *d)
+}
+
+func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	basePlan := planScan(codec, fd, target)
+	ptrPlan := ptrScanner[T]{basePlan}
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return ptrPlan
+}

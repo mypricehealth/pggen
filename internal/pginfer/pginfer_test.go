@@ -3,16 +3,17 @@ package pginfer
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/jschaf/pggen/internal/ast"
-	"github.com/jschaf/pggen/internal/difftest"
-	"github.com/jschaf/pggen/internal/pg"
-	"github.com/jschaf/pggen/internal/pgtest"
-	"github.com/jschaf/pggen/internal/texts"
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/difftest"
+	"github.com/mypricehealth/pggen/internal/pg"
+	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/mypricehealth/pggen/internal/texts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestInferrer_InferTypes(t *testing.T) {
@@ -136,7 +137,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 			query: &ast.SourceQuery{
 				Name:        "FindByFirstName",
 				PreparedSQL: "SELECT first_name FROM author WHERE first_name = $1;",
-				ParamNames:  []string{"FirstName"},
+				Params:      []ast.Param{{Name: "FirstName"}},
 				ResultKind:  ast.ResultKindMany,
 				Doc:         newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
@@ -158,7 +159,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 			query: &ast.SourceQuery{
 				Name:        "FindByFirstNameJoin",
 				PreparedSQL: "SELECT a1.first_name FROM author a1 JOIN author a2 USING (author_id) WHERE a1.first_name = $1;",
-				ParamNames:  []string{"FirstName"},
+				Params:      []ast.Param{{Name: "FirstName"}},
 				ResultKind:  ast.ResultKindMany,
 				Doc:         newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
@@ -180,7 +181,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 			query: &ast.SourceQuery{
 				Name:        "DeleteAuthorByID",
 				PreparedSQL: "DELETE FROM author WHERE author_id = $1;",
-				ParamNames:  []string{"AuthorID"},
+				Params:      []ast.Param{{Name: "AuthorID"}},
 				ResultKind:  ast.ResultKindExec,
 				Doc:         newCommentGroup("-- One", "--- - two", "-- name: Foo"),
 			},
@@ -200,7 +201,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 			query: &ast.SourceQuery{
 				Name:        "DeleteAuthorByIDReturning",
 				PreparedSQL: "DELETE FROM author WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
-				ParamNames:  []string{"AuthorID"},
+				Params:      []ast.Param{{Name: "AuthorID"}},
 				ResultKind:  ast.ResultKindMany,
 			},
 			want: TypedQuery{
@@ -222,7 +223,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 			query: &ast.SourceQuery{
 				Name:        "UpdateByAuthorIDReturning",
 				PreparedSQL: "UPDATE author set first_name = 'foo' WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
-				ParamNames:  []string{"AuthorID"},
+				Params:      []ast.Param{{Name: "AuthorID"}},
 				ResultKind:  ast.ResultKindMany,
 			},
 			want: TypedQuery{
@@ -244,7 +245,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 			query: &ast.SourceQuery{
 				Name:        "VoidOne",
 				PreparedSQL: "SELECT ''::void;",
-				ParamNames:  []string{},
+				Params:      []ast.Param{},
 				ResultKind:  ast.ResultKindExec,
 			},
 			want: TypedQuery{
@@ -262,7 +263,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 			query: &ast.SourceQuery{
 				Name:        "VoidTwo",
 				PreparedSQL: "SELECT 'foo' as foo, ''::void;",
-				ParamNames:  []string{},
+				Params:      []ast.Param{},
 				ResultKind:  ast.ResultKindOne,
 			},
 			want: TypedQuery{
@@ -300,7 +301,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 			query: &ast.SourceQuery{
 				Name:        "ArrayAggFirstName",
 				PreparedSQL: "SELECT array_agg(first_name) AS names FROM author;",
-				ParamNames:  []string{},
+				Params:      []ast.Param{},
 				ResultKind:  ast.ResultKindOne,
 				Doc:         newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
@@ -345,7 +346,7 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 			&ast.SourceQuery{
 				Name:        "DeleteAuthorByIDMany",
 				PreparedSQL: "DELETE FROM author WHERE author_id = $1;",
-				ParamNames:  []string{"AuthorID"},
+				Params:      []ast.Param{{Name: "AuthorID"}},
 				ResultKind:  ast.ResultKindMany,
 			},
 			errors.New("query DeleteAuthorByIDMany has incompatible result kind :many; " +
@@ -356,7 +357,7 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 			&ast.SourceQuery{
 				Name:        "DeleteAuthorByIDOne",
 				PreparedSQL: "DELETE FROM author WHERE author_id = $1;",
-				ParamNames:  []string{"AuthorID"},
+				Params:      []ast.Param{{Name: "AuthorID"}},
 				ResultKind:  ast.ResultKindOne,
 			},
 			errors.New(
@@ -368,7 +369,7 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 			&ast.SourceQuery{
 				Name:        "VoidOne",
 				PreparedSQL: "SELECT ''::void;",
-				ParamNames:  nil,
+				Params:      nil,
 				ResultKind:  ast.ResultKindMany,
 			},
 			errors.New(

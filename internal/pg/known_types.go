@@ -1,8 +1,8 @@
 package pg
 
 import (
-	"github.com/jackc/pgtype"
-	"github.com/jschaf/pggen/internal/pg/pgoid"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/mypricehealth/pggen/internal/pg/pgoid"
 )
 
 // If you add to this list, also add to defaultKnownTypes below.
@@ -81,7 +81,7 @@ var (
 )
 
 // All known Postgres types by OID.
-var defaultKnownTypes = map[pgtype.OID]Type{
+var defaultKnownTypes = map[uint32]Type{
 	pgtype.BoolOID:             Bool,
 	pgtype.ByteaOID:            Bytea,
 	pgtype.QCharOID:            QChar,

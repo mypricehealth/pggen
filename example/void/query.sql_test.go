@@ -2,9 +2,10 @@ package void
 
 import (
 	"context"
-	"github.com/jschaf/pggen/internal/pgtest"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestQuerier(t *testing.T) {

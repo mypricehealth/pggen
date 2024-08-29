@@ -5,17 +5,19 @@ package out
 import (
 	"context"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const bravoSQL = `SELECT 'bravo' as output;`
 
 // Bravo implements Querier.Bravo.
 func (q *DBQuerier) Bravo(ctx context.Context) (string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "Bravo")
-	row := q.conn.QueryRow(ctx, bravoSQL)
-	var item string
-	if err := row.Scan(&item); err != nil {
-		return item, fmt.Errorf("query Bravo: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "Bravo")
+	rows, err := q.conn.Query(ctx, bravoSQL)
+	if err != nil {
+		return "", fmt.Errorf("query Bravo: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 }
