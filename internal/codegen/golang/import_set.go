@@ -1,8 +1,8 @@
 package golang
 
 import (
-	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
-	"sort"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"golang.org/x/exp/maps"
 )
 
 // ImportSet contains a set of imports required by one Go file.
@@ -15,15 +15,25 @@ func NewImportSet() *ImportSet {
 }
 
 // AddPackage adds a fully qualified package path to the set, like
-// "github.com/jschaf/pggen/foo".
+// "github.com/mypricehealth/pggen/foo".
 func (s *ImportSet) AddPackage(p string) {
 	s.imports[p] = struct{}{}
+}
+
+// AddPackage removes a fully qualified package path from the set, like
+// "github.com/mypricehealth/pggen/foo".
+func (s *ImportSet) RemovePackage(p string) {
+	delete(s.imports, p)
 }
 
 // AddType adds all fully qualified package paths needed for type and any child
 // types.
 func (s *ImportSet) AddType(typ gotype.Type) {
-	s.AddPackage(typ.Import())
+	importPath := typ.Import()
+	if importPath != "" {
+		s.AddPackage(typ.Import())
+	}
+
 	comp, ok := typ.(*gotype.CompositeType)
 	if !ok {
 		return
@@ -33,15 +43,8 @@ func (s *ImportSet) AddType(typ gotype.Type) {
 	}
 }
 
-// SortedPackages returns a new slice containing the sorted packages, suitable
+// Get returns a new slice containing the packages, suitable
 // for an import statement.
-func (s *ImportSet) SortedPackages() []string {
-	imps := make([]string, 0, len(s.imports))
-	for pkg := range s.imports {
-		if pkg != "" {
-			imps = append(imps, pkg)
-		}
-	}
-	sort.Strings(imps)
-	return imps
+func (s *ImportSet) Get() []string {
+	return maps.Keys(s.imports)
 }

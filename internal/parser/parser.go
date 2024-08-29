@@ -2,14 +2,15 @@ package parser
 
 import (
 	"fmt"
-	"github.com/jschaf/pggen/internal/ast"
-	"github.com/jschaf/pggen/internal/scanner"
-	"github.com/jschaf/pggen/internal/token"
 	goscan "go/scanner"
 	gotok "go/token"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/scanner"
+	"github.com/mypricehealth/pggen/internal/token"
 )
 
 type parser struct {
@@ -202,7 +203,8 @@ func (p *parser) errorExpected(pos gotok.Pos, msg string) {
 }
 
 // Regexp to extract query annotations that control output.
-var annotationRegexp = regexp.MustCompile(`name: ([a-zA-Z0-9_$]+)[ \t]+(:many|:one|:exec)[ \t]*(.*)`)
+var nameAnnotationRegexp = regexp.MustCompile(`name:[ \t]+([a-zA-Z0-9_$]+)[ \t]+(:many|:one|:exec|:setup|:rows|:string)[ \t]*(.*)`)
+var pggenArgRegexp = regexp.MustCompile(`pggen[\n\t ]*\.[\n\t ]*(arg|optional_arg)[\n\t ]*\(`)
 
 func (p *parser) parseQuery() ast.Query {
 	if p.trace {
@@ -213,16 +215,22 @@ func (p *parser) parseQuery() ast.Query {
 	sql := &strings.Builder{}
 	pos := p.pos
 
-	names := make([]argPos, 0, 4) // all pggen.arg names in order, can be duplicated
+	hasAnyPGGenArg := false
+
+	names := make([]argData, 0, 4) // all pggen argument names in order, can be duplicated
 	for p.tok != token.Semicolon {
 		if p.tok == token.EOF || p.tok == token.Illegal {
 			p.error(p.pos, "unterminated query (no semicolon): "+string(p.src[pos:p.pos]))
 			return &ast.BadQuery{From: pos, To: p.pos}
 		}
-		hasPggenArg := strings.HasSuffix(p.lit, "pggen.arg(") ||
-			strings.HasSuffix(p.lit, "pggen.arg (")
-		if p.tok == token.QueryFragment && hasPggenArg {
-			arg, ok := p.parsePggenArg()
+
+		argMatch := pggenArgRegexp.FindStringSubmatch(p.lit)
+		if argMatch != nil {
+			hasAnyPGGenArg = true
+		}
+
+		if p.tok == token.QueryFragment && argMatch != nil {
+			arg, ok := p.parsePggenArg(argMatch[1])
 			if !ok {
 				return &ast.BadQuery{From: pos, To: p.pos}
 			}
@@ -231,7 +239,7 @@ func (p *parser) parseQuery() ast.Query {
 
 			names = append(names, arg)
 			// Don't consume last query fragment that has closing paren ")" because
-			// the fragment might contain the start of another pggen.arg.
+			// the fragment might contain the start of another pggen argument.
 			continue
 		}
 		p.next()
@@ -247,11 +255,18 @@ func (p *parser) parseQuery() ast.Query {
 		return &ast.BadQuery{From: pos, To: p.pos}
 	}
 	last := doc.List[len(doc.List)-1]
-	annotations := annotationRegexp.FindStringSubmatch(last.Text)
+	annotations := nameAnnotationRegexp.FindStringSubmatch(last.Text)
 	if annotations == nil {
 		p.error(pos, "no 'name: <name> :<type>' token found in comment before query; comment line: \""+last.Text+`"`)
 		return &ast.BadQuery{From: pos, To: p.pos}
 	}
+
+	resultKind := ast.ResultKind(annotations[2])
+	if resultKind == ast.ResultKindSetup && hasAnyPGGenArg {
+		p.error(pos, "queries with :setup result kind cannot contain pggen.arg")
+		return &ast.BadQuery{From: pos, To: p.pos}
+	}
+
 	args := annotations[3]
 	pragmas, err := parsePragmas(args)
 	if err != nil {
@@ -268,8 +283,8 @@ func (p *parser) parseQuery() ast.Query {
 		Start:       pos,
 		SourceSQL:   templateSQL,
 		PreparedSQL: preparedSQL,
-		ParamNames:  params,
-		ResultKind:  ast.ResultKind(annotations[2]),
+		Params:      params,
+		ResultKind:  resultKind,
 		Pragmas:     pragmas,
 		Semi:        semi,
 	}
@@ -327,59 +342,60 @@ func validateProtoMsgType(val string) (string, error) {
 	return val, nil
 }
 
-// argPos is the name and position of expression like pggen.arg('foo').
-type argPos struct {
-	lo, hi int
-	name   string
+// argData is the information of expression like pggen.arg('foo').
+type argData struct {
+	lo, hi     int
+	name       string
+	isOptional bool
 }
 
-// parsePggenArg parses the name from: pggen.arg('foo') and pos for the start
+// parsePggenArg parses the name from: pggen.arg('foo') or pggen.optional_arg('foo') and pos for the start
 // and end.
-func (p *parser) parsePggenArg() (argPos, bool) {
+func (p *parser) parsePggenArg(functionName string) (argData, bool) {
 	lo := int(p.pos) + strings.LastIndex(p.lit, "pggen") - 1
-	p.next() // consume query fragment that contains "pggen.arg("
+	p.next() // consume query fragment that contains a pggen argument
 	if p.tok != token.String {
-		p.error(p.pos, `expected string literal after "pggen.arg("`)
-		return argPos{}, false
+		p.error(p.pos, `expected string literal after pggen argument`)
+		return argData{}, false
 	}
 	if len(p.lit) < 3 || p.lit[0] != '\'' || p.lit[len(p.lit)-1] != '\'' {
-		p.error(p.pos, `expected single-quoted string literal after "pggen.arg("`)
-		return argPos{}, false
+		p.error(p.pos, `expected single-quoted string literal after pggen argument`)
+		return argData{}, false
 	}
 	name := p.lit[1 : len(p.lit)-1]
 	p.next() // consume string literal
 	if p.tok != token.QueryFragment {
-		p.error(p.pos, `expected query fragment after parsing pggen.arg string`)
-		return argPos{}, false
+		p.error(p.pos, `expected query fragment after parsing pggen argument`)
+		return argData{}, false
 	}
 	if !strings.HasPrefix(p.lit, ")") {
-		p.error(p.pos, `expected closing paren ")" after parsing pggen.arg string`)
-		return argPos{}, false
+		p.error(p.pos, `expected closing paren ")" after parsing pggen argument`)
+		return argData{}, false
 	}
 	hi := int(p.pos)
-	return argPos{lo: lo, hi: hi, name: name}, true
+	return argData{lo: lo, hi: hi, name: name, isOptional: functionName == "optional_arg"}, true
 }
 
-// prepareSQL replaces each pggen.arg with the $n, respecting the order that the
+// prepareSQL replaces each pggen argument with the $n, respecting the order that the
 // arg first appeared. Args with the same name use the same $n.
-func prepareSQL(sql string, args []argPos) (string, []string) {
+func prepareSQL(sql string, args []argData) (string, []ast.Param) {
 	if len(args) == 0 {
 		return sql, nil
 	}
 	// Figure out order of each params.
 	paramOrders := make(map[string]int, len(args))
-	params := make([]string, 0, len(args))
+	params := make([]ast.Param, 0, len(args))
 	idx := 1
 	for _, arg := range args {
 		if _, ok := paramOrders[arg.name]; !ok {
-			params = append(params, arg.name)
+			params = append(params, ast.Param{Name: arg.name, IsOptional: arg.isOptional})
 			paramOrders[arg.name] = idx
 			idx++
 		}
 	}
 
-	// Replace each pggen.arg with the prepare order, like $1. We're not using
-	// strings.NewReplacer because pggen.arg might appear in a comment.
+	// Replace each pggen argument with the prepare order, like $1. We're not using
+	// strings.NewReplacer because pggen argument might appear in a comment.
 	bs := []byte(sql)
 	sb := &strings.Builder{}
 	sb.Grow(len(sql))

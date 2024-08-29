@@ -2,13 +2,15 @@ package golang
 
 import (
 	"fmt"
-	"github.com/jschaf/pggen/internal/casing"
-	"github.com/jschaf/pggen/internal/codegen"
-	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
-	"github.com/jschaf/pggen/internal/gomod"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/casing"
+	"github.com/mypricehealth/pggen/internal/codegen"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/gomod"
 )
 
 // Templater creates query file templates.
@@ -66,42 +68,28 @@ func (tm Templater) TemplateAll(files []codegen.QueryFile) ([]TemplatedFile, err
 	goQueryFiles[firstIndex].Declarers = allDeclarers.ListAll()
 
 	// Remove unneeded pgconn import if possible.
-	for i, file := range goQueryFiles {
-		if file.needsPgconnImport() {
-			continue
+	for _, file := range goQueryFiles {
+		if !file.needsPgconnImport() {
+			file.Imports.RemovePackage("github.com/jackc/pgx/v5/pgconn")
 		}
-		pgconnIdx := -1
-		imports := file.Imports
-		for i, pkg := range imports {
-			if pkg == "github.com/jackc/pgconn" {
-				pgconnIdx = i
-				break
-			}
+
+		if file.needsPGXImport() {
+			file.Imports.AddPackage("github.com/jackc/pgx/v5")
 		}
-		if pgconnIdx > -1 {
-			copy(imports[pgconnIdx:], imports[pgconnIdx+1:])
-			goQueryFiles[i].Imports = imports[:len(imports)-1]
+
+		if file.needsPgtypeImport() {
+			file.Imports.AddPackage("github.com/jackc/pgx/v5/pgtype")
 		}
 	}
 
 	// Remove self imports.
-	for i, file := range goQueryFiles {
+	for _, file := range goQueryFiles {
 		selfPkg, err := gomod.GuessPackage(file.SourcePath)
 		if err != nil || selfPkg == "" {
 			continue // ignore error, assume it's not a self import
 		}
-		selfPkgIdx := -1
-		imports := file.Imports
-		for i, pkg := range file.Imports {
-			if pkg == selfPkg {
-				selfPkgIdx = i
-				break
-			}
-		}
-		if selfPkgIdx > -1 {
-			copy(imports[selfPkgIdx:], imports[selfPkgIdx+1:])
-			goQueryFiles[i].Imports = imports[:len(imports)-1]
-		}
+
+		file.Imports.RemovePackage(selfPkg)
 	}
 	return goQueryFiles, nil
 }
@@ -113,10 +101,11 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 	imports := NewImportSet()
 	imports.AddPackage("context")
 	imports.AddPackage("fmt")
-	imports.AddPackage("github.com/jackc/pgconn")
+	imports.AddPackage("github.com/jackc/pgx/v5/pgconn")
 	if isLeader {
-		imports.AddPackage("github.com/jackc/pgtype")
-		imports.AddPackage("github.com/jackc/pgx/v4")
+		imports.AddPackage("github.com/jackc/pgx/v5/pgtype")
+		imports.AddPackage("github.com/jackc/pgx/v5")
+		imports.AddPackage("sync")
 	}
 
 	pkgPath := ""
@@ -148,17 +137,18 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 		// Build inputs.
 		inputs := make([]TemplatedParam, len(query.Inputs))
 		for i, input := range query.Inputs {
-			goType, err := tm.resolver.Resolve(input.PgType /*nullable*/, false, pkgPath)
+			goType, err := tm.resolver.Resolve(input.PgType, input.IsOptional, pkgPath, false)
 			if err != nil {
 				return TemplatedFile{}, nil, err
 			}
+
 			imports.AddType(goType)
 			inputs[i] = TemplatedParam{
 				UpperName: tm.chooseUpperName(input.PgName, "UnnamedParam", i, len(query.Inputs)),
 				LowerName: tm.chooseLowerName(input.PgName, "unnamedParam", i, len(query.Inputs)),
 				QualType:  gotype.QualifyType(goType, pkgPath),
 				Type:      goType,
-				RawName:   query.Inputs[i],
+				RawName:   input,
 			}
 			ds := FindInputDeclarers(goType).ListAll()
 			declarers.AddAll(ds...)
@@ -167,7 +157,7 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 		// Build outputs.
 		outputs := make([]TemplatedColumn, len(query.Outputs))
 		for i, out := range query.Outputs {
-			goType, err := tm.resolver.Resolve(out.PgType, out.Nullable, pkgPath)
+			goType, err := tm.resolver.Resolve(out.PgType, out.Nullable, pkgPath, true)
 			if err != nil {
 				return TemplatedFile{}, nil, err
 			}
@@ -183,14 +173,29 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 			declarers.AddAll(ds...)
 		}
 
+		nonVoidCols := removeVoidColumns(outputs)
+		resultKind := query.ResultKind
+		if len(nonVoidCols) == 0 {
+			resultKind = ast.ResultKindExec
+		}
+
+		var sqlVarName string
+		if resultKind == ast.ResultKindString {
+			// Export the raw SQL if the result kind is `:string`
+			sqlVarName = tm.caser.ToUpperGoIdent(query.Name) + "SQL"
+		} else {
+			sqlVarName = tm.caser.ToLowerGoIdent(query.Name) + "SQL"
+		}
+
 		queries = append(queries, TemplatedQuery{
 			Name:             tm.caser.ToUpperGoIdent(query.Name),
-			SQLVarName:       tm.caser.ToLowerGoIdent(query.Name) + "SQL",
-			ResultKind:       query.ResultKind,
+			SQLVarName:       sqlVarName,
+			ResultKind:       resultKind,
 			Doc:              docs.String(),
 			PreparedSQL:      query.PreparedSQL,
 			Inputs:           inputs,
-			Outputs:          outputs,
+			Outputs:          nonVoidCols,
+			ScanCols:         outputs,
 			InlineParamCount: tm.inlineParamCount,
 		})
 	}
@@ -200,7 +205,7 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 		GoPkg:      tm.pkg,
 		SourcePath: file.SourcePath,
 		Queries:    queries,
-		Imports:    imports.SortedPackages(),
+		Imports:    imports,
 		IsLeader:   isLeader,
 	}, declarers, nil
 }
@@ -231,4 +236,18 @@ func (tm Templater) chooseLowerName(pgName string, fallback string, idx int, num
 		suffix = fmt.Sprintf("%2d", idx)
 	}
 	return fallback + suffix
+}
+
+// removeVoidColumns makes a copy of cols with all VoidType columns removed.
+// Useful because return types shouldn't contain the void type, but we need
+// to use a nil placeholder for void types when scanning a pgx.Row.
+func removeVoidColumns(cols []TemplatedColumn) []TemplatedColumn {
+	outs := make([]TemplatedColumn, 0, len(cols))
+	for _, col := range cols {
+		if _, ok := col.Type.(*gotype.VoidType); ok {
+			continue
+		}
+		outs = append(outs, col)
+	}
+	return outs
 }

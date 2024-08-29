@@ -68,9 +68,12 @@ func (g *CommentGroup) Kind() NodeKind { return KindCommentGroup }
 type ResultKind string
 
 const (
-	ResultKindMany ResultKind = ":many"
-	ResultKindOne  ResultKind = ":one"
-	ResultKindExec ResultKind = ":exec"
+	ResultKindMany   ResultKind = ":many"
+	ResultKindOne    ResultKind = ":one"
+	ResultKindExec   ResultKind = ":exec"
+	ResultKindSetup  ResultKind = ":setup"
+	ResultKindRows   ResultKind = ":rows"
+	ResultKindString ResultKind = ":string"
 )
 
 // Pragmas are options to control generated code for a single query.
@@ -93,10 +96,15 @@ type (
 		Start       gotok.Pos     // position of the start token, like 'SELECT' or 'UPDATE'
 		SourceSQL   string        // the complete sql query as it appeared in the source file
 		PreparedSQL string        // the sql query with args replaced by $1, $2, etc.
-		ParamNames  []string      // the name of each param in the PreparedSQL, the nth entry is the $n+1 param
+		Params      []Param       // the name of each param in the PreparedSQL, the nth entry is the $n+1 param
 		ResultKind  ResultKind    // the result output type
 		Pragmas     Pragmas       // optional query options
 		Semi        gotok.Pos     // position of the closing semicolon
+	}
+
+	Param struct {
+		Name       string
+		IsOptional bool
 	}
 )
 

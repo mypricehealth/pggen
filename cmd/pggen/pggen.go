@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar"
-	"github.com/jschaf/pggen"
-	"github.com/jschaf/pggen/internal/flags"
-	"github.com/jschaf/pggen/internal/texts"
+	"github.com/mypricehealth/pggen"
+	"github.com/mypricehealth/pggen/internal/flags"
+	"github.com/mypricehealth/pggen/internal/texts"
 	"github.com/peterbourgon/ff/v3/ffcli"
 )
 
@@ -30,7 +30,7 @@ EXAMPLES
   # Generate code for a single query file using an existing postgres database.
   pggen gen go --query-glob author/queries.sql --postgres-connection "user=postgres port=5555 dbname=pggen"
 
-  # Generate code using Docker to create the postgres database with a schema 
+  # Generate code using Docker to create the postgres database with a schema
   # file. --schema-glob arg implies using Dockerized postgres.
   pggen gen go --schema-glob author/schema.sql --query-glob author/queries.sql
 
@@ -93,7 +93,7 @@ func newGenCmd() *ffcli.Command {
 			"or custom mapping like 'apis=APIs'")
 	goTypes := flags.Strings(fset, "go-type", nil,
 		"custom type mapping from Postgres to fully qualified Go type, "+
-			"like 'device_type=github.com/jschaf/pggen.DeviceType'")
+			"like 'device_type=github.com/mypricehealth/pggen.DeviceType'")
 	inlineParamCount := fset.Int("inline-param-count", 2,
 		"number of params (inclusive) to inline when calling querier methods; 0 always generates a struct")
 	goSubCmd := &ffcli.Command{
@@ -102,7 +102,7 @@ func newGenCmd() *ffcli.Command {
 		ShortHelp:  "generates go code for Postgres query files",
 		FlagSet:    fset,
 		LongHelp: flagHelp + "\n" + texts.Dedent(`
-			pggen uses the provided --postgres-connection to query the database. If not 
+			pggen uses the provided --postgres-connection to query the database. If not
 			present, pggen creates a Docker container to query the database.
 		`),
 		Exec: func(ctx context.Context, args []string) error {

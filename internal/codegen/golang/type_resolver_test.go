@@ -2,17 +2,17 @@ package golang
 
 import (
 	"github.com/google/go-cmp/cmp"
-	"github.com/jackc/pgtype"
-	"github.com/jschaf/pggen/internal/casing"
-	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
-	"github.com/jschaf/pggen/internal/difftest"
-	"github.com/jschaf/pggen/internal/pg"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/mypricehealth/pggen/internal/casing"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/difftest"
+	"github.com/mypricehealth/pggen/internal/pg"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestTypeResolver_Resolve(t *testing.T) {
-	testPkgPath := "github.com/jschaf/pggen/internal/codegen/golang/test_resolve"
+	testPkgPath := "github.com/mypricehealth/pggen/internal/codegen/golang/test_resolve"
 	caser := casing.NewCaser()
 	caser.AddAcronym("ios", "IOS")
 	caser.AddAcronym("macos", "MacOS")
@@ -88,7 +88,7 @@ func TestTypeResolver_Resolve(t *testing.T) {
 			pgType:   pg.BaseType{Name: "point", ID: pgtype.PointOID},
 			nullable: false,
 			want: &gotype.ImportType{
-				PkgPath: "github.com/jackc/pgtype",
+				PkgPath: "github.com/jackc/pgx/v5/pgtype",
 				Type: &gotype.OpaqueType{
 					PgType: pg.BaseType{Name: "point", ID: pgtype.PointOID},
 					Name:   "Point",
@@ -100,7 +100,7 @@ func TestTypeResolver_Resolve(t *testing.T) {
 			pgType:   pg.BaseType{Name: "point", ID: pgtype.PointOID},
 			nullable: true,
 			want: &gotype.ImportType{
-				PkgPath: "github.com/jackc/pgtype",
+				PkgPath: "github.com/jackc/pgx/v5/pgtype",
 				Type: &gotype.OpaqueType{
 					PgType: pg.BaseType{Name: "point", ID: pgtype.PointOID},
 					Name:   "Point",
@@ -169,7 +169,7 @@ func TestTypeResolver_Resolve(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resolver := NewTypeResolver(caser, tt.overrides)
-			got, err := resolver.Resolve(tt.pgType, tt.nullable, testPkgPath)
+			got, err := resolver.Resolve(tt.pgType, tt.nullable, testPkgPath, true)
 			if err != nil {
 				t.Fatal(err)
 			}

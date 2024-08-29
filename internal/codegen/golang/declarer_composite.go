@@ -1,10 +1,11 @@
 package golang
 
 import (
-	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
-	"github.com/jschaf/pggen/internal/pg"
 	"strconv"
 	"strings"
+
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 // NameCompositeTranscoderFunc returns the function name that creates a
@@ -263,7 +264,7 @@ func (c CompositeInitDeclarer) Declare(string) (string, error) {
 // of a composite type as a generic array: []interface{}. Necessary because we
 // can only set pgtype.CompositeType from a []interface{}.
 //
-// Revisit after https://github.com/jackc/pgtype/pull/100 to see if we can
+// Revisit after https://github.com/jackc/pgx/v5/pgtype/pull/100 to see if we can
 // simplify.
 type CompositeRawDeclarer struct {
 	typ *gotype.CompositeType

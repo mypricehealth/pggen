@@ -3,11 +3,12 @@ package inline3
 import (
 	"context"
 	"errors"
-	"github.com/stretchr/testify/require"
 	"testing"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jschaf/pggen/internal/pgtest"
+	"github.com/stretchr/testify/require"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/mypricehealth/pggen/internal/pgtest"
 	"github.com/stretchr/testify/assert"
 )
 

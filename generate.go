@@ -4,19 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v4"
-	"github.com/jschaf/pggen/internal/ast"
-	"github.com/jschaf/pggen/internal/codegen"
-	"github.com/jschaf/pggen/internal/codegen/golang"
-	"github.com/jschaf/pggen/internal/errs"
-	"github.com/jschaf/pggen/internal/parser"
-	"github.com/jschaf/pggen/internal/pgdocker"
-	"github.com/jschaf/pggen/internal/pginfer"
 	gotok "go/token"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/codegen"
+	"github.com/mypricehealth/pggen/internal/codegen/golang"
+	"github.com/mypricehealth/pggen/internal/errs"
+	"github.com/mypricehealth/pggen/internal/parser"
+	"github.com/mypricehealth/pggen/internal/pgdocker"
+	"github.com/mypricehealth/pggen/internal/pginfer"
 )
 
 // Lang is a supported codegen language.
@@ -212,6 +213,10 @@ func parseQueries(srcPath string, inferrer *pginfer.Inferrer) (codegen.QueryFile
 			}
 			seenNames[query.Name] = struct{}{}
 			srcQueries = append(srcQueries, query)
+
+			if query.ResultKind == ast.ResultKindSetup {
+				inferrer.RunSetup(query.PreparedSQL)
+			}
 		default:
 			return codegen.QueryFile{}, fmt.Errorf("unhandled query ast type: %T", query)
 		}

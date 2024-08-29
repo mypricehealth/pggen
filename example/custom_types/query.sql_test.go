@@ -2,12 +2,13 @@ package custom_types
 
 import (
 	"context"
-	"github.com/jackc/pgtype"
-	"github.com/jschaf/pggen/internal/pgtest"
-	"github.com/jschaf/pggen/internal/texts"
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/mypricehealth/pggen/internal/texts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestQuerier_CustomTypes(t *testing.T) {
@@ -38,7 +39,7 @@ func TestQuerier_CustomMyInt(t *testing.T) {
 			AND pn.nspname = current_schema()
 		LIMIT 1;
 	`))
-	oidVal := pgtype.OIDValue{}
+	oidVal := uint32Value{}
 	err := row.Scan(&oidVal)
 	require.NoError(t, err)
 	t.Logf("my_int oid: %d", oidVal.Uint)

@@ -4,7 +4,7 @@ package gomod
 
 import (
 	"fmt"
-	"github.com/jschaf/pggen/internal/paths"
+	"github.com/mypricehealth/pggen/internal/paths"
 	"golang.org/x/mod/modfile"
 	"os"
 	"path/filepath"

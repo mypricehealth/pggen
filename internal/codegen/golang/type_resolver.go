@@ -2,11 +2,12 @@ package golang
 
 import (
 	"fmt"
-	"github.com/jschaf/pggen/internal/casing"
-	"github.com/jschaf/pggen/internal/codegen/golang/gotype"
-	"github.com/jschaf/pggen/internal/pg"
 	"strconv"
 	"strings"
+
+	"github.com/mypricehealth/pggen/internal/casing"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 // TypeResolver handles the mapping between Postgres and Go types.
@@ -26,13 +27,27 @@ func NewTypeResolver(c casing.Caser, overrides map[string]string) TypeResolver {
 }
 
 // Resolve maps a Postgres type to a Go type.
-func (tr TypeResolver) Resolve(pgt pg.Type, nullable bool, pkgPath string) (gotype.Type, error) {
+func (tr TypeResolver) Resolve(pgt pg.Type, nullable bool, pkgPath string, isOutput bool) (gotype.Type, error) {
+	typ, err := tr.innerResolve(pgt, nullable, pkgPath, isOutput)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isOutput && nullable {
+		typ = makeNullable(typ)
+	}
+
+	return typ, nil
+}
+
+func (tr TypeResolver) innerResolve(pgt pg.Type, nullable bool, pkgPath string, isOutput bool) (gotype.Type, error) {
 	// Custom user override.
 	if goType, ok := tr.overrides[pgt.String()]; ok {
 		opaque, err := gotype.ParseOpaqueType(goType, pgt)
 		if err != nil {
 			return nil, fmt.Errorf("resolve custom type: %w", err)
 		}
+
 		return opaque, nil
 	}
 
@@ -78,7 +93,7 @@ func (tr TypeResolver) Resolve(pgt pg.Type, nullable bool, pkgPath string) (goty
 	// New type that pggen will define in generated source code.
 	switch pgt := pgt.(type) {
 	case pg.ArrayType:
-		elemType, err := tr.Resolve(pgt.Elem, nullable, pkgPath)
+		elemType, err := tr.Resolve(pgt.Elem, nullable, pkgPath, isOutput)
 		if err != nil {
 			return nil, fmt.Errorf("resolve array elem type for array type %q: %w", pgt.Name, err)
 		}
@@ -95,6 +110,17 @@ func (tr TypeResolver) Resolve(pgt pg.Type, nullable bool, pkgPath string) (goty
 	}
 
 	return nil, fmt.Errorf("no go type found for Postgres type %s oid=%d", pgt.String(), pgt.OID())
+}
+
+func makeNullable(opaque gotype.Type) gotype.Type {
+	switch v := opaque.(type) {
+	// Already nullable
+	case *gotype.PointerType, *gotype.ArrayType:
+		return v
+	default:
+		// Needs to be made nullable
+		return &gotype.PointerType{Elem: opaque}
+	}
 }
 
 // CreateCompositeType creates a struct to represent a Postgres composite type.
@@ -117,7 +143,7 @@ func CreateCompositeType(
 			ident = gotype.ChooseFallbackName(colName, "UnnamedField"+strconv.Itoa(i))
 		}
 		fieldNames[i] = ident
-		fieldType, err := resolver.Resolve(pgt.ColumnTypes[i] /*nullable*/, true, pkgPath)
+		fieldType, err := resolver.Resolve(pgt.ColumnTypes[i] /*nullable*/, true, pkgPath, true)
 		if err != nil {
 			return nil, fmt.Errorf("resolve composite column type %s.%s: %w", pgt.Name, colName, err)
 		}

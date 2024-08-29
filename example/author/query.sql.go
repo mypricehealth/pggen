@@ -5,10 +5,14 @@ package author
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"sync"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
@@ -48,8 +52,7 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn   // underlying Postgres transport to use
-	types *typeResolver // resolve types by name
+	conn genericConn
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -61,36 +64,7 @@ type genericConn interface {
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn, types: newTypeResolver()}
-}
-
-// typeResolver looks up the pgtype.ValueTranscoder by Postgres type name.
-type typeResolver struct {
-	connInfo *pgtype.ConnInfo // types by Postgres type name
-}
-
-func newTypeResolver() *typeResolver {
-	ci := pgtype.NewConnInfo()
-	return &typeResolver{connInfo: ci}
-}
-
-// findValue find the OID, and pgtype.ValueTranscoder for a Postgres type name.
-func (tr *typeResolver) findValue(name string) (uint32, pgtype.ValueTranscoder, bool) {
-	typ, ok := tr.connInfo.DataTypeForName(name)
-	if !ok {
-		return 0, nil, false
-	}
-	v := pgtype.NewValue(typ.Value)
-	return typ.OID, v.(pgtype.ValueTranscoder), true
-}
-
-// setValue sets the value of a ValueTranscoder to a value that should always
-// work and panics if it fails.
-func (tr *typeResolver) setValue(vt pgtype.ValueTranscoder, val interface{}) pgtype.ValueTranscoder {
-	if err := vt.Set(val); err != nil {
-		panic(fmt.Sprintf("set ValueTranscoder %T to %+v: %s", vt, val, err))
-	}
-	return vt
+	return &DBQuerier{conn: conn}
 }
 
 const findAuthorByIDSQL = `SELECT * FROM author WHERE author_id = $1;`
@@ -104,13 +78,13 @@ type FindAuthorByIDRow struct {
 
 // FindAuthorByID implements Querier.FindAuthorByID.
 func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAuthorByIDRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindAuthorByID")
-	row := q.conn.QueryRow(ctx, findAuthorByIDSQL, authorID)
-	var item FindAuthorByIDRow
-	if err := row.Scan(&item.AuthorID, &item.FirstName, &item.LastName, &item.Suffix); err != nil {
-		return item, fmt.Errorf("query FindAuthorByID: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
+	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, authorID)
+	if err != nil {
+		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindAuthorByIDRow])
 }
 
 const findAuthorsSQL = `SELECT * FROM author WHERE first_name = $1;`
@@ -124,24 +98,13 @@ type FindAuthorsRow struct {
 
 // FindAuthors implements Querier.FindAuthors.
 func (q *DBQuerier) FindAuthors(ctx context.Context, firstName string) ([]FindAuthorsRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindAuthors")
+	ctx = context.WithValue(ctx, QueryName{}, "FindAuthors")
 	rows, err := q.conn.Query(ctx, findAuthorsSQL, firstName)
 	if err != nil {
 		return nil, fmt.Errorf("query FindAuthors: %w", err)
 	}
-	defer rows.Close()
-	items := []FindAuthorsRow{}
-	for rows.Next() {
-		var item FindAuthorsRow
-		if err := rows.Scan(&item.AuthorID, &item.FirstName, &item.LastName, &item.Suffix); err != nil {
-			return nil, fmt.Errorf("scan FindAuthors row: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindAuthors rows: %w", err)
-	}
-	return items, err
+
+	return pgx.CollectRows(rows, pgx.RowToStructByName[FindAuthorsRow])
 }
 
 const findAuthorNamesSQL = `SELECT first_name, last_name FROM author ORDER BY author_id = $1;`
@@ -153,58 +116,36 @@ type FindAuthorNamesRow struct {
 
 // FindAuthorNames implements Querier.FindAuthorNames.
 func (q *DBQuerier) FindAuthorNames(ctx context.Context, authorID int32) ([]FindAuthorNamesRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindAuthorNames")
+	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorNames")
 	rows, err := q.conn.Query(ctx, findAuthorNamesSQL, authorID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindAuthorNames: %w", err)
 	}
-	defer rows.Close()
-	items := []FindAuthorNamesRow{}
-	for rows.Next() {
-		var item FindAuthorNamesRow
-		if err := rows.Scan(&item.FirstName, &item.LastName); err != nil {
-			return nil, fmt.Errorf("scan FindAuthorNames row: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindAuthorNames rows: %w", err)
-	}
-	return items, err
+
+	return pgx.CollectRows(rows, pgx.RowToStructByName[FindAuthorNamesRow])
 }
 
 const findFirstNamesSQL = `SELECT first_name FROM author ORDER BY author_id = $1;`
 
 // FindFirstNames implements Querier.FindFirstNames.
 func (q *DBQuerier) FindFirstNames(ctx context.Context, authorID int32) ([]*string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "FindFirstNames")
+	ctx = context.WithValue(ctx, QueryName{}, "FindFirstNames")
 	rows, err := q.conn.Query(ctx, findFirstNamesSQL, authorID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindFirstNames: %w", err)
 	}
-	defer rows.Close()
-	items := []*string{}
-	for rows.Next() {
-		var item string
-		if err := rows.Scan(&item); err != nil {
-			return nil, fmt.Errorf("scan FindFirstNames row: %w", err)
-		}
-		items = append(items, &item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("close FindFirstNames rows: %w", err)
-	}
-	return items, err
+
+	return pgx.CollectRows(rows, pgx.RowTo[*string])
 }
 
 const deleteAuthorsSQL = `DELETE FROM author WHERE first_name = 'joe';`
 
 // DeleteAuthors implements Querier.DeleteAuthors.
 func (q *DBQuerier) DeleteAuthors(ctx context.Context) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "DeleteAuthors")
+	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthors")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsSQL)
 	if err != nil {
-		return cmdTag, fmt.Errorf("exec query DeleteAuthors: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthors: %w", err)
 	}
 	return cmdTag, err
 }
@@ -213,10 +154,10 @@ const deleteAuthorsByFirstNameSQL = `DELETE FROM author WHERE first_name = $1;`
 
 // DeleteAuthorsByFirstName implements Querier.DeleteAuthorsByFirstName.
 func (q *DBQuerier) DeleteAuthorsByFirstName(ctx context.Context, firstName string) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "DeleteAuthorsByFirstName")
+	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFirstName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFirstNameSQL, firstName)
 	if err != nil {
-		return cmdTag, fmt.Errorf("exec query DeleteAuthorsByFirstName: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFirstName: %w", err)
 	}
 	return cmdTag, err
 }
@@ -235,10 +176,10 @@ type DeleteAuthorsByFullNameParams struct {
 
 // DeleteAuthorsByFullName implements Querier.DeleteAuthorsByFullName.
 func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, params DeleteAuthorsByFullNameParams) (pgconn.CommandTag, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "DeleteAuthorsByFullName")
+	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
-		return cmdTag, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", err)
 	}
 	return cmdTag, err
 }
@@ -249,13 +190,13 @@ RETURNING author_id;`
 
 // InsertAuthor implements Querier.InsertAuthor.
 func (q *DBQuerier) InsertAuthor(ctx context.Context, firstName string, lastName string) (int32, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "InsertAuthor")
-	row := q.conn.QueryRow(ctx, insertAuthorSQL, firstName, lastName)
-	var item int32
-	if err := row.Scan(&item); err != nil {
-		return item, fmt.Errorf("query InsertAuthor: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
+	rows, err := q.conn.Query(ctx, insertAuthorSQL, firstName, lastName)
+	if err != nil {
+		return 0, fmt.Errorf("query InsertAuthor: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[int32])
 }
 
 const insertAuthorSuffixSQL = `INSERT INTO author (first_name, last_name, suffix)
@@ -277,62 +218,92 @@ type InsertAuthorSuffixRow struct {
 
 // InsertAuthorSuffix implements Querier.InsertAuthorSuffix.
 func (q *DBQuerier) InsertAuthorSuffix(ctx context.Context, params InsertAuthorSuffixParams) (InsertAuthorSuffixRow, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "InsertAuthorSuffix")
-	row := q.conn.QueryRow(ctx, insertAuthorSuffixSQL, params.FirstName, params.LastName, params.Suffix)
-	var item InsertAuthorSuffixRow
-	if err := row.Scan(&item.AuthorID, &item.FirstName, &item.LastName, &item.Suffix); err != nil {
-		return item, fmt.Errorf("query InsertAuthorSuffix: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthorSuffix")
+	rows, err := q.conn.Query(ctx, insertAuthorSuffixSQL, params.FirstName, params.LastName, params.Suffix)
+	if err != nil {
+		return InsertAuthorSuffixRow{}, fmt.Errorf("query InsertAuthorSuffix: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertAuthorSuffixRow])
 }
 
 const stringAggFirstNameSQL = `SELECT string_agg(first_name, ',') AS names FROM author WHERE author_id = $1;`
 
 // StringAggFirstName implements Querier.StringAggFirstName.
 func (q *DBQuerier) StringAggFirstName(ctx context.Context, authorID int32) (*string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "StringAggFirstName")
-	row := q.conn.QueryRow(ctx, stringAggFirstNameSQL, authorID)
-	var item *string
-	if err := row.Scan(&item); err != nil {
-		return item, fmt.Errorf("query StringAggFirstName: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "StringAggFirstName")
+	rows, err := q.conn.Query(ctx, stringAggFirstNameSQL, authorID)
+	if err != nil {
+		return nil, fmt.Errorf("query StringAggFirstName: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
 }
 
 const arrayAggFirstNameSQL = `SELECT array_agg(first_name) AS names FROM author WHERE author_id = $1;`
 
 // ArrayAggFirstName implements Querier.ArrayAggFirstName.
 func (q *DBQuerier) ArrayAggFirstName(ctx context.Context, authorID int32) ([]string, error) {
-	ctx = context.WithValue(ctx, "pggen_query_name", "ArrayAggFirstName")
-	row := q.conn.QueryRow(ctx, arrayAggFirstNameSQL, authorID)
-	item := []string{}
-	if err := row.Scan(&item); err != nil {
-		return item, fmt.Errorf("query ArrayAggFirstName: %w", err)
+	ctx = context.WithValue(ctx, QueryName{}, "ArrayAggFirstName")
+	rows, err := q.conn.Query(ctx, arrayAggFirstNameSQL, authorID)
+	if err != nil {
+		return nil, fmt.Errorf("query ArrayAggFirstName: %w", err)
 	}
-	return item, nil
+
+	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]string])
 }
 
-// textPreferrer wraps a pgtype.ValueTranscoder and sets the preferred encoding
-// format to text instead binary (the default). pggen uses the text format
-// when the OID is unknownOID because the binary format requires the OID.
-// Typically occurs for unregistered types.
-type textPreferrer struct {
-	pgtype.ValueTranscoder
+type scanCacheKey struct {
+	oid      uint32
+	format   int16
 	typeName string
 }
 
-// PreferredParamFormat implements pgtype.ParamFormatPreferrer.
-func (t textPreferrer) PreferredParamFormat() int16 { return pgtype.TextFormatCode }
+var (
+	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
+	plansMu sync.RWMutex
+)
 
-func (t textPreferrer) NewTypeValue() pgtype.Value {
-	return textPreferrer{ValueTranscoder: pgtype.NewValue(t.ValueTranscoder).(pgtype.ValueTranscoder), typeName: t.typeName}
+func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return plan
 }
 
-func (t textPreferrer) TypeName() string {
-	return t.typeName
+type ptrScanner[T any] struct {
+	basePlan pgtype.ScanPlan
 }
 
-// unknownOID means we don't know the OID for a type. This is okay for decoding
-// because pgx call DecodeText or DecodeBinary without requiring the OID. For
-// encoding parameters, pggen uses textPreferrer if the OID is unknown.
-const unknownOID = 0
+func (s ptrScanner[T]) Scan(src []byte, dst any) error {
+	if src == nil {
+		return nil
+	}
+	d := dst.(**T)
+	*d = new(T)
+	return s.basePlan.Scan(src, *d)
+}
+
+func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
+	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
+	plansMu.RLock()
+	plan := plans[key]
+	plansMu.RUnlock()
+	if plan != nil {
+		return plan
+	}
+	basePlan := planScan(codec, fd, target)
+	ptrPlan := ptrScanner[T]{basePlan}
+	plansMu.Lock()
+	plans[key] = plan
+	plansMu.Unlock()
+	return ptrPlan
+}
