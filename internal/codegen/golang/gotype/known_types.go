@@ -87,8 +87,8 @@ var (
 	Float64Slice  = MustParseKnownType("[]float64", pg.Float8Array)
 	Float64pSlice = MustParseKnownType("[]*float64", pg.Float8Array)
 	ByteSlice     = MustParseKnownType("[]byte", pg.Bytea)
-	JSON          = MustParseKnownType("archive/json.RawMessage", pg.JSON)
-	JSONB         = MustParseKnownType("archive/json.RawMessage", pg.JSONB)
+	JSON          = MustParseKnownType("encoding/json.RawMessage", pg.JSON)
+	JSONB         = MustParseKnownType("encoding/json.RawMessage", pg.JSONB)
 )
 
 // pgtype types prefixed with "pg".
@@ -192,7 +192,7 @@ var knownTypesByOID = map[uint32]knownGoType{
 	pgtype.TIDOID:              {PgTID, nil, nil},
 	pgtype.XIDOID:              {PgXID, nil, nil},
 	pgtype.CIDOID:              {PgCID, nil, nil},
-	pgtype.JSONOID:             {PgJSON, JSON, JSON},
+	pgtype.JSONOID:             {JSON, JSON, JSON},
 	pgtype.PointOID:            {PgPoint, nil, nil},
 	pgtype.LsegOID:             {PgLseg, nil, nil},
 	pgtype.PathOID:             {PgPath, nil, nil},
@@ -240,8 +240,8 @@ var knownTypesByOID = map[uint32]knownGoType{
 	pgtype.RecordOID:           {PgRecord, nil, nil},
 	pgtype.UUIDOID:             {PgUUID, nil, nil},
 	pgtype.UUIDArrayOID:        {PgUUIDArray, nil, nil},
-	pgtype.JSONBOID:            {PgJSONB, JSONB, JSONB},
-	pgtype.JSONBArrayOID:       {PgJSONBArray, StringSlice, nil},
+	pgtype.JSONBOID:            {JSONB, JSONB, JSONB},
+	pgtype.JSONBArrayOID:       {StringSlice, StringSlice, nil},
 	pgtype.Int4rangeOID:        {PgInt4range, nil, nil},
 	pgtype.NumrangeOID:         {PgNumrange, nil, nil},
 	pgtype.TsrangeOID:          {PgTsrange, nil, nil},
