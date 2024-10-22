@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kirk-anchor/pggen"
-	"github.com/kirk-anchor/pggen/internal/difftest"
-	"github.com/kirk-anchor/pggen/internal/pgtest"
+	"github.com/mypricehealth/pggen"
+	"github.com/mypricehealth/pggen/internal/difftest"
+	"github.com/mypricehealth/pggen/internal/pgtest"
 	"github.com/stretchr/testify/assert"
 )
 

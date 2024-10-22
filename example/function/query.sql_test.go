@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kirk-anchor/pggen/internal/difftest"
-	"github.com/kirk-anchor/pggen/internal/ptrs"
+	"github.com/mypricehealth/pggen/internal/difftest"
+	"github.com/mypricehealth/pggen/internal/ptrs"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kirk-anchor/pggen/internal/pgtest"
+	"github.com/mypricehealth/pggen/internal/pgtest"
 )
 
 func TestNewQuerier_OutParams(t *testing.T) {

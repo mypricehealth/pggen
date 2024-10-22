@@ -3,7 +3,7 @@ package pg
 import (
 	"strconv"
 
-	"github.com/kirk-anchor/pggen/internal/pg/pgoid"
+	"github.com/mypricehealth/pggen/internal/pg/pgoid"
 )
 
 // Type is a Postgres type.

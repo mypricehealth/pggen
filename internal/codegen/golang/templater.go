@@ -6,11 +6,11 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/kirk-anchor/pggen/internal/ast"
-	"github.com/kirk-anchor/pggen/internal/casing"
-	"github.com/kirk-anchor/pggen/internal/codegen"
-	"github.com/kirk-anchor/pggen/internal/codegen/golang/gotype"
-	"github.com/kirk-anchor/pggen/internal/gomod"
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/casing"
+	"github.com/mypricehealth/pggen/internal/codegen"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/gomod"
 )
 
 // Templater creates query file templates.

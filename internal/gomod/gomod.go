@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/kirk-anchor/pggen/internal/paths"
+	"github.com/mypricehealth/pggen/internal/paths"
 	"golang.org/x/mod/modfile"
 )
 

@@ -7,9 +7,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/kirk-anchor/pggen/internal/pg/pgoid"
-	"github.com/kirk-anchor/pggen/internal/pgtest"
-	"github.com/kirk-anchor/pggen/internal/texts"
+	"github.com/mypricehealth/pggen/internal/pg/pgoid"
+	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/mypricehealth/pggen/internal/texts"
 )
 
 func TestNewTypeFetcher(t *testing.T) {

@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kirk-anchor/pggen/internal/casing"
-	"github.com/kirk-anchor/pggen/internal/codegen/golang/gotype"
-	"github.com/kirk-anchor/pggen/internal/pg"
+	"github.com/mypricehealth/pggen/internal/casing"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 // TypeResolver handles the mapping between Postgres and Go types.

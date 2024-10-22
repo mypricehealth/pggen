@@ -6,7 +6,7 @@ type pgTemplate struct {
 }
 
 const dockerfileTemplate = `
-{{- /*gotype: github.com/kirk-anchor/pggen/internal/pgdocker.pgTemplate*/ -}}
+{{- /*gotype: github.com/mypricehealth/pggen/internal/pgdocker.pgTemplate*/ -}}
 {{- define "dockerfile" -}}
 FROM postgres:13
 {{ range .InitScripts }}

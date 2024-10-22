@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/kirk-anchor/pggen/internal/token"
+	"github.com/mypricehealth/pggen/internal/token"
 )
 
 const (

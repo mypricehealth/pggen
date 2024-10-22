@@ -5,15 +5,15 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/kirk-anchor/pggen/internal/casing"
-	"github.com/kirk-anchor/pggen/internal/codegen/golang/gotype"
-	"github.com/kirk-anchor/pggen/internal/difftest"
-	"github.com/kirk-anchor/pggen/internal/pg"
+	"github.com/mypricehealth/pggen/internal/casing"
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/difftest"
+	"github.com/mypricehealth/pggen/internal/pg"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTypeResolver_Resolve(t *testing.T) {
-	testPkgPath := "github.com/kirk-anchor/pggen/internal/codegen/golang/test_resolve"
+	testPkgPath := "github.com/mypricehealth/pggen/internal/codegen/golang/test_resolve"
 	caser := casing.NewCaser()
 	caser.AddAcronym("ios", "IOS")
 	caser.AddAcronym("macos", "MacOS")

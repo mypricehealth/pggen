@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kirk-anchor/pggen/internal/pgtest"
+	"github.com/mypricehealth/pggen/internal/pgtest"
 	"github.com/stretchr/testify/assert"
 )
 

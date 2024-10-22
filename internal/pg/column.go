@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/kirk-anchor/pggen/internal/texts"
+	"github.com/mypricehealth/pggen/internal/texts"
 )
 
 // Column stores information about a column in a TableOID.

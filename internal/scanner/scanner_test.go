@@ -4,7 +4,7 @@ import (
 	gotok "go/token"
 	"testing"
 
-	"github.com/kirk-anchor/pggen/internal/token"
+	"github.com/mypricehealth/pggen/internal/token"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/jackc/pgx/v5"
-	"github.com/kirk-anchor/pggen/internal/pgtest"
-	"github.com/kirk-anchor/pggen/internal/texts"
+	"github.com/mypricehealth/pggen/internal/pgtest"
+	"github.com/mypricehealth/pggen/internal/texts"
 	"github.com/stretchr/testify/assert"
 )
 

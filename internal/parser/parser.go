@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kirk-anchor/pggen/internal/ast"
-	"github.com/kirk-anchor/pggen/internal/scanner"
-	"github.com/kirk-anchor/pggen/internal/token"
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/scanner"
+	"github.com/mypricehealth/pggen/internal/token"
 )
 
 type parser struct {

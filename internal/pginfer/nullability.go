@@ -4,8 +4,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/kirk-anchor/pggen/internal/ast"
-	"github.com/kirk-anchor/pggen/internal/pg"
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 // isColNullable tries to prove the column is not nullable. Strive for

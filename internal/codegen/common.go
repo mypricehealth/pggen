@@ -3,7 +3,7 @@
 package codegen
 
 import (
-	"github.com/kirk-anchor/pggen/internal/pginfer"
+	"github.com/mypricehealth/pggen/internal/pginfer"
 )
 
 // QueryFile represents all SQL queries from a single file.

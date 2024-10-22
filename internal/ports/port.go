@@ -3,7 +3,7 @@ package ports
 import (
 	"net"
 
-	"github.com/kirk-anchor/pggen/internal/errs"
+	"github.com/mypricehealth/pggen/internal/errs"
 )
 
 // Port is a port.

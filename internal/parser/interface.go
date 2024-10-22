@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/kirk-anchor/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/ast"
 )
 
 // If src != nil, readSource converts src to a []byte if possible; otherwise it
