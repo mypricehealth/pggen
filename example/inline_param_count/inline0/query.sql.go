@@ -5,10 +5,12 @@ package inline0
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type QueryName struct{}
@@ -40,6 +42,8 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
@@ -52,17 +56,25 @@ func NewQuerier(conn genericConn) *DBQuerier {
 	}
 }
 
-// RegisterTypes should be run in config.AfterConnect to load custom types
-func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
-	pgxdecimal.Register(conn.TypeMap())
-	for _, typ := range typesToRegister {
-		dt, err := conn.LoadType(ctx, typ)
-		if err != nil {
-			return err
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
 		}
-		conn.TypeMap().RegisterType(dt)
-	}
-	return nil
+	})
+
+	return registerErr
 }
 
 var typesToRegister = []string{}
@@ -76,6 +88,11 @@ const countAuthorsSQL = `SELECT count(*) FROM author;`
 
 // CountAuthors implements Querier.CountAuthors.
 func (q *DBQuerier) CountAuthors(ctx context.Context) (*int, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "CountAuthors")
 	rows, err := q.conn.Query(ctx, countAuthorsSQL)
 	if err != nil {
@@ -100,6 +117,11 @@ type FindAuthorByIDRow struct {
 
 // FindAuthorByID implements Querier.FindAuthorByID.
 func (q *DBQuerier) FindAuthorByID(ctx context.Context, params FindAuthorByIDParams) (FindAuthorByIDRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return FindAuthorByIDRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
 	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, params.AuthorID)
 	if err != nil {
@@ -120,6 +142,11 @@ type InsertAuthorParams struct {
 
 // InsertAuthor implements Querier.InsertAuthor.
 func (q *DBQuerier) InsertAuthor(ctx context.Context, params InsertAuthorParams) (int32, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return 0, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
 	rows, err := q.conn.Query(ctx, insertAuthorSQL, params.FirstName, params.LastName)
 	if err != nil {
@@ -143,6 +170,11 @@ type DeleteAuthorsByFullNameParams struct {
 
 // DeleteAuthorsByFullName implements Querier.DeleteAuthorsByFullName.
 func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, params DeleteAuthorsByFullNameParams) (pgconn.CommandTag, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {

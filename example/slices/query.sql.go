@@ -5,11 +5,13 @@ package slices
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type QueryName struct{}
@@ -37,6 +39,8 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
@@ -49,17 +53,25 @@ func NewQuerier(conn genericConn) *DBQuerier {
 	}
 }
 
-// RegisterTypes should be run in config.AfterConnect to load custom types
-func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
-	pgxdecimal.Register(conn.TypeMap())
-	for _, typ := range typesToRegister {
-		dt, err := conn.LoadType(ctx, typ)
-		if err != nil {
-			return err
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
 		}
-		conn.TypeMap().RegisterType(dt)
-	}
-	return nil
+	})
+
+	return registerErr
 }
 
 var typesToRegister = []string{}
@@ -73,6 +85,11 @@ const getBoolsSQL = `SELECT $1::boolean[];`
 
 // GetBools implements Querier.GetBools.
 func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GetBools")
 	rows, err := q.conn.Query(ctx, getBoolsSQL, data)
 	if err != nil {
@@ -86,6 +103,11 @@ const getOneTimestampSQL = `SELECT $1::timestamp;`
 
 // GetOneTimestamp implements Querier.GetOneTimestamp.
 func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time.Time, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GetOneTimestamp")
 	rows, err := q.conn.Query(ctx, getOneTimestampSQL, data)
 	if err != nil {
@@ -100,6 +122,11 @@ FROM unnest($1::timestamptz[]);`
 
 // GetManyTimestamptzs implements Querier.GetManyTimestamptzs.
 func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) ([]*time.Time, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamptzs")
 	rows, err := q.conn.Query(ctx, getManyTimestamptzsSQL, data)
 	if err != nil {
@@ -114,6 +141,11 @@ FROM unnest($1::timestamp[]);`
 
 // GetManyTimestamps implements Querier.GetManyTimestamps.
 func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([]*time.Time, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamps")
 	rows, err := q.conn.Query(ctx, getManyTimestampsSQL, data)
 	if err != nil {

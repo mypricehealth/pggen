@@ -158,17 +158,25 @@ func NewConstantDeclarer(key, str string) ConstantDeclarer {
 func (c ConstantDeclarer) DedupeKey() string              { return c.key }
 func (c ConstantDeclarer) Declare(string) (string, error) { return c.str, nil }
 
-const typeResolverInitDecl = `// RegisterTypes should be run in config.AfterConnect to load custom types
-func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
-	pgxdecimal.Register(conn.TypeMap())
-	for _, typ := range typesToRegister {
-		dt, err := conn.LoadType(ctx, typ)
-		if err != nil {
-			return err
+const typeResolverInitDecl = `var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
 		}
-		conn.TypeMap().RegisterType(dt)
-	}
-	return nil
+	})
+
+	return registerErr
 }
 
 var typesToRegister = []string{}

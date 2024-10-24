@@ -5,10 +5,12 @@ package syntax
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type QueryName struct{}
@@ -54,6 +56,8 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
@@ -70,25 +74,33 @@ func NewQuerier(conn genericConn) *DBQuerier {
 type UnnamedEnum123 string
 
 const (
-	UnnamedEnum123InconvertibleEnumName UnnamedEnum123 = "inconvertible_enum_name"
-	UnnamedEnum123UnnamedLabel1         UnnamedEnum123 = ""
-	UnnamedEnum123UnnamedLabel2111      UnnamedEnum123 = "111"
-	UnnamedEnum123UnnamedLabel3         UnnamedEnum123 = "!!"
+	UnnamedEnum123InconvertibleEnumName_0 UnnamedEnum123 = "inconvertible_enum_name"
+	UnnamedEnum123UnnamedLabel1_1         UnnamedEnum123 = ""
+	UnnamedEnum123UnnamedLabel2111_2      UnnamedEnum123 = "111"
+	UnnamedEnum123UnnamedLabel3_3         UnnamedEnum123 = "!!"
 )
 
 func (u UnnamedEnum123) String() string { return string(u) }
 
-// RegisterTypes should be run in config.AfterConnect to load custom types
-func RegisterTypes(ctx context.Context, conn *pgx.Conn) error {
-	pgxdecimal.Register(conn.TypeMap())
-	for _, typ := range typesToRegister {
-		dt, err := conn.LoadType(ctx, typ)
-		if err != nil {
-			return err
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
 		}
-		conn.TypeMap().RegisterType(dt)
-	}
-	return nil
+	})
+
+	return registerErr
 }
 
 var typesToRegister = []string{}
@@ -102,6 +114,11 @@ const backtickSQL = "SELECT '`';"
 
 // Backtick implements Querier.Backtick.
 func (q *DBQuerier) Backtick(ctx context.Context) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "Backtick")
 	rows, err := q.conn.Query(ctx, backtickSQL)
 	if err != nil {
@@ -115,6 +132,11 @@ const backtickQuoteBacktickSQL = "SELECT '`\"`';"
 
 // BacktickQuoteBacktick implements Querier.BacktickQuoteBacktick.
 func (q *DBQuerier) BacktickQuoteBacktick(ctx context.Context) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickQuoteBacktick")
 	rows, err := q.conn.Query(ctx, backtickQuoteBacktickSQL)
 	if err != nil {
@@ -128,6 +150,11 @@ const backtickNewlineSQL = "SELECT '`\n';"
 
 // BacktickNewline implements Querier.BacktickNewline.
 func (q *DBQuerier) BacktickNewline(ctx context.Context) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickNewline")
 	rows, err := q.conn.Query(ctx, backtickNewlineSQL)
 	if err != nil {
@@ -141,6 +168,11 @@ const backtickDoubleQuoteSQL = "SELECT '`\"';"
 
 // BacktickDoubleQuote implements Querier.BacktickDoubleQuote.
 func (q *DBQuerier) BacktickDoubleQuote(ctx context.Context) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickDoubleQuote")
 	rows, err := q.conn.Query(ctx, backtickDoubleQuoteSQL)
 	if err != nil {
@@ -154,6 +186,11 @@ const backtickBackslashNSQL = "SELECT '`\\n';"
 
 // BacktickBackslashN implements Querier.BacktickBackslashN.
 func (q *DBQuerier) BacktickBackslashN(ctx context.Context) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickBackslashN")
 	rows, err := q.conn.Query(ctx, backtickBackslashNSQL)
 	if err != nil {
@@ -172,6 +209,11 @@ type IllegalNameSymbolsRow struct {
 
 // IllegalNameSymbols implements Querier.IllegalNameSymbols.
 func (q *DBQuerier) IllegalNameSymbols(ctx context.Context, helloWorld string) (IllegalNameSymbolsRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return IllegalNameSymbolsRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "IllegalNameSymbols")
 	rows, err := q.conn.Query(ctx, illegalNameSymbolsSQL, helloWorld)
 	if err != nil {
@@ -185,6 +227,11 @@ const spaceAfterSQL = `SELECT $1;`
 
 // SpaceAfter implements Querier.SpaceAfter.
 func (q *DBQuerier) SpaceAfter(ctx context.Context, space string) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "SpaceAfter")
 	rows, err := q.conn.Query(ctx, spaceAfterSQL, space)
 	if err != nil {
@@ -198,10 +245,15 @@ const badEnumNameSQL = `SELECT 'inconvertible_enum_name'::"123";`
 
 // BadEnumName implements Querier.BadEnumName.
 func (q *DBQuerier) BadEnumName(ctx context.Context) (UnnamedEnum123, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return UnnamedEnum123(""), fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "BadEnumName")
 	rows, err := q.conn.Query(ctx, badEnumNameSQL)
 	if err != nil {
-		return UnnamedEnum123{}, fmt.Errorf("query BadEnumName: %w", q.errWrap(err))
+		return UnnamedEnum123(""), fmt.Errorf("query BadEnumName: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[UnnamedEnum123])
 	return res, q.errWrap(err)
@@ -211,6 +263,11 @@ const goKeywordSQL = `SELECT $1::text;`
 
 // GoKeyword implements Querier.GoKeyword.
 func (q *DBQuerier) GoKeyword(ctx context.Context, go_ string) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GoKeyword")
 	rows, err := q.conn.Query(ctx, goKeywordSQL, go_)
 	if err != nil {

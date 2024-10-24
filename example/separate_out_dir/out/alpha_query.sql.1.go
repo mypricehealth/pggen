@@ -13,6 +13,11 @@ const alphaSQL = `SELECT 'alpha' as output;`
 
 // Alpha implements Querier.Alpha.
 func (q *DBQuerier) Alpha(ctx context.Context) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "Alpha")
 	rows, err := q.conn.Query(ctx, alphaSQL)
 	if err != nil {
