@@ -427,7 +427,8 @@ func (tq TemplatedQuery) EmitZeroResult() (string, error) {
 		if len(tq.Outputs) > 1 {
 			return tq.Name + "Row{}", nil
 		}
-		typ := tq.Outputs[0].Type.BaseName()
+		goType := tq.Outputs[0].Type
+		typ := goType.BaseName()
 		switch {
 		case strings.HasPrefix(typ, "[]"):
 			return "nil", nil // empty slice
@@ -442,12 +443,23 @@ func (tq TemplatedQuery) EmitZeroResult() (string, error) {
 		case "bool":
 			return "false", nil
 		default:
-			return typ + "{}", nil // won't work for type Foo int
+			return toZeroValue(goType), nil
 		}
 	case ast.ResultKindString:
 		return "", fmt.Errorf("EmitZeroResult should not be called for kind: %s", tq.ResultKind)
 	default:
 		return "", fmt.Errorf("unhandled EmitZeroResult kind: %s", tq.ResultKind)
+	}
+}
+
+func toZeroValue(goType gotype.Type) string {
+	switch v := goType.(type) {
+	case *gotype.ImportType:
+		return toZeroValue(v.Type)
+	case *gotype.EnumType:
+		return fmt.Sprintf(`%s("")`, goType.BaseName())
+	default:
+		return goType.BaseName() + "{}"
 	}
 }
 
