@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/mypricehealth/pggen/internal/ast"
 )
 
@@ -32,10 +33,29 @@ type ExplainQueryResultRow struct {
 // explainQuery executes explain plan to get the node plan type and the format
 // of the output columns.
 func (inf *Inferrer) explainQuery(query *ast.SourceQuery) (Plan, error) {
-	explainQuery := `EXPLAIN (VERBOSE, FORMAT JSON) ` + query.PreparedSQL
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
-	row := inf.conn.QueryRow(ctx, explainQuery, createParamArgs(query)...)
+
+	if len(query.DenseSQL) == 0 {
+		return Plan{}, fmt.Errorf("no sql to explain")
+	}
+
+	tx, err := inf.conn.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Plan{}, fmt.Errorf("begin transaction failure: %w", err)
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+
+	startingSQL, lastSQL := query.DenseSQL[:len(query.DenseSQL)-1], query.DenseSQL[len(query.DenseSQL)-1]
+	for _, sql := range startingSQL {
+		_, err := inf.conn.Exec(ctx, sql.SQL, createParamArgs(len(sql.Args))...)
+		if err != nil {
+			return Plan{}, fmt.Errorf("execute prepared query: %w", err)
+		}
+	}
+
+	explainQuery := `EXPLAIN (VERBOSE, FORMAT JSON) ` + lastSQL.SQL
+	row := inf.conn.QueryRow(ctx, explainQuery, createParamArgs(len(lastSQL.Args))...)
 	explain := make([]ExplainQueryResultRow, 0, 1)
 	if err := row.Scan(&explain); err != nil {
 		return Plan{}, fmt.Errorf("explain prepared query: %w", err)

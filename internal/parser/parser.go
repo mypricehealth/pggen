@@ -5,6 +5,7 @@ import (
 	goscan "go/scanner"
 	gotok "go/token"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -142,25 +143,29 @@ func (p *parser) next() {
 	p.next0()
 
 	if p.tok == token.LineComment {
-		var comment *ast.CommentGroup
-		var endLine int
+		p.handleCommentGroup(prev)
+	}
+}
 
-		if p.file.Line(p.pos) == p.file.Line(prev) {
-			// The comment is on same line as the previous token; it/ cannot be a
-			// lead comment but may be a line comment.
-			comment, endLine = p.consumeCommentGroup(0)
-		}
+func (p *parser) handleCommentGroup(prev gotok.Pos) {
+	var comment *ast.CommentGroup
+	var endLine int
 
-		// consume successor comments, if any
-		for p.tok == token.LineComment {
-			comment, endLine = p.consumeCommentGroup(1)
-		}
+	if p.file.Line(p.pos) == p.file.Line(prev) {
+		// The comment is on same line as the previous token; it/ cannot be a
+		// lead comment but may be a line comment.
+		comment, endLine = p.consumeCommentGroup(0)
+	}
 
-		if endLine+1 == p.file.Line(p.pos) {
-			// The next token is following on the line immediately after the
-			// comment group, thus the last comment group is a lead comment.
-			p.leadComment = comment
-		}
+	// consume successor comments, if any
+	for p.tok == token.LineComment {
+		comment, endLine = p.consumeCommentGroup(1)
+	}
+
+	if endLine+1 == p.file.Line(p.pos) {
+		// The next token is following on the line immediately after the
+		// comment group, thus the last comment group is a lead comment.
+		p.leadComment = comment
 	}
 }
 
@@ -211,14 +216,29 @@ func (p *parser) parseQuery() ast.Query {
 		defer un(trace(p, "Query"))
 	}
 
-	doc := p.leadComment
-	sql := &strings.Builder{}
+	var doc *ast.CommentGroup
+	if p.leadComment != nil {
+		doc = new(ast.CommentGroup)
+		*doc = *p.leadComment
+	}
+
 	pos := p.pos
 
 	hasAnyPGGenArg := false
 
 	names := make([]argData, 0, 4) // all pggen argument names in order, can be duplicated
-	for p.tok != token.Semicolon {
+
+	var sql []string
+	var denseSQL []ast.DenseSQL
+	preparedSQL := &strings.Builder{}
+	var params []ast.Param
+	paramIndexes := make(map[string]int)
+
+	lastWasSemicolon := false
+
+	queryStartPos := pos - 1
+	var endPos gotok.Pos
+	for {
 		if p.tok == token.EOF || p.tok == token.Illegal {
 			p.error(p.pos, "unterminated query (no semicolon): "+string(p.src[pos:p.pos]))
 			return &ast.BadQuery{From: pos, To: p.pos}
@@ -234,20 +254,56 @@ func (p *parser) parseQuery() ast.Query {
 			if !ok {
 				return &ast.BadQuery{From: pos, To: p.pos}
 			}
-			arg.lo -= int(pos) - 1 // adjust lo,hi to be relative to query start
-			arg.hi -= int(pos) - 1 // subtract 1 because pos is 1-based
+			arg.lo -= int(queryStartPos) // adjust lo,hi to be relative to query start
+			arg.hi -= int(queryStartPos)
 
 			names = append(names, arg)
 			// Don't consume last query fragment that has closing paren ")" because
 			// the fragment might contain the start of another pggen argument.
 			continue
 		}
-		p.next()
-	}
 
-	semi := p.pos
-	p.expect(token.Semicolon)
-	sql.Write(p.src[pos-1 : semi])
+		lastWasSemicolon = p.tok == token.Semicolon
+		prev := p.pos
+
+		// By the time the loop breaks the previous position will be the end position.
+		endPos = prev
+
+		p.next0()
+
+		queryEnd := p.tok == token.Semicolon
+		if queryEnd {
+			currentSQL := string(p.src[queryStartPos:p.pos])
+
+			// The next query starts at this position now.
+			queryStartPos = p.pos
+
+			sql = append(sql, currentSQL)
+
+			var dense ast.DenseSQL
+			var prepared string
+			dense, prepared, params = prepareSQL(currentSQL, names, params, paramIndexes)
+
+			// The args only apply to the current query.
+			// Deletes while setting `len` to 0 unlike `clear`.
+			names = slices.Delete(names, 0, len(names))
+
+			preparedSQL.WriteString(prepared)
+			denseSQL = append(denseSQL, dense)
+		}
+
+		newQueryGroup := (p.tok == token.LineComment && nameAnnotationRegexp.Match([]byte(p.lit)))
+		atValidEOF := (p.tok == token.EOF && lastWasSemicolon)
+
+		if newQueryGroup {
+			preparedSQL.Write(p.src[prev : p.pos-1])
+			p.handleCommentGroup(prev)
+		}
+
+		if newQueryGroup || atValidEOF {
+			break
+		}
+	}
 
 	// Extract annotations
 	if doc == nil || doc.List == nil || len(doc.List) == 0 {
@@ -274,19 +330,17 @@ func (p *parser) parseQuery() ast.Query {
 		return &ast.BadQuery{From: pos, To: p.pos}
 	}
 
-	templateSQL := sql.String()
-	preparedSQL, params := prepareSQL(templateSQL, names)
-
 	return &ast.SourceQuery{
 		Name:        annotations[1],
 		Doc:         doc,
 		Start:       pos,
-		SourceSQL:   templateSQL,
-		PreparedSQL: preparedSQL,
+		SourceSQL:   sql,
+		DenseSQL:    denseSQL,
+		PreparedSQL: preparedSQL.String(),
 		Params:      params,
 		ResultKind:  resultKind,
 		Pragmas:     pragmas,
-		Semi:        semi,
+		EndPos:      endPos,
 	}
 }
 
@@ -378,19 +432,16 @@ func (p *parser) parsePggenArg(functionName string) (argData, bool) {
 
 // prepareSQL replaces each pggen argument with the $n, respecting the order that the
 // arg first appeared. Args with the same name use the same $n.
-func prepareSQL(sql string, args []argData) (string, []ast.Param) {
+func prepareSQL(sql string, args []argData, params []ast.Param, paramIndexes map[string]int) (ast.DenseSQL, string, []ast.Param) {
 	if len(args) == 0 {
-		return sql, nil
+		return ast.DenseSQL{SQL: sql}, sql, params
 	}
-	// Figure out order of each params.
-	paramOrders := make(map[string]int, len(args))
-	params := make([]ast.Param, 0, len(args))
-	idx := 1
+
+	// Add any new params.
 	for _, arg := range args {
-		if _, ok := paramOrders[arg.name]; !ok {
+		if _, ok := paramIndexes[arg.name]; !ok {
 			params = append(params, ast.Param{Name: arg.name, IsOptional: arg.isOptional})
-			paramOrders[arg.name] = idx
-			idx++
+			paramIndexes[arg.name] = len(paramIndexes)
 		}
 	}
 
@@ -399,16 +450,46 @@ func prepareSQL(sql string, args []argData) (string, []ast.Param) {
 	bs := []byte(sql)
 	sb := &strings.Builder{}
 	sb.Grow(len(sql))
+
+	realSQL := &strings.Builder{}
+	realSQL.Grow(len(sql))
+
 	prev := 0
+
+	argIndex := 0
+	denseIndexes := make(map[string]int, len(args))
+
+	var denseSQL ast.DenseSQL
 	for _, arg := range args {
 		sb.Write(bs[prev:arg.lo])
 		sb.WriteByte('$')
-		sb.WriteString(strconv.Itoa(paramOrders[arg.name]))
+
+		realPosition := paramIndexes[arg.name]
+
+		if _, ok := denseIndexes[arg.name]; !ok {
+			denseIndexes[arg.name] = argIndex
+			argIndex++
+
+			// Remembering the real indexes is necessary too however.
+			denseSQL.Args = append(denseSQL.Args, realPosition)
+		}
+
+		// When SQL is being prepared it must be dense, i.e. remapping something like $5, $3 to $1, $2.
+		sb.WriteString(strconv.Itoa(denseIndexes[arg.name] + 1))
+
+		realSQL.Write(bs[prev:arg.lo])
+		realSQL.WriteByte('$')
+		realSQL.WriteString(strconv.Itoa(realPosition + 1))
+
 		prev = arg.hi
 	}
 	sb.Write(bs[prev:])
+	realSQL.Write(bs[prev:])
 
-	return sb.String(), params
+	denseSQL.SQL = sb.String()
+	denseSQL.UniqueArgs = argIndex
+
+	return denseSQL, realSQL.String(), params
 }
 
 // ----------------------------------------------------------------------------

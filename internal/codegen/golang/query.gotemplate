@@ -78,7 +78,7 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
     }
 
 	ctx = context.WithValue(ctx, QueryName{}, "{{ $q.Name }}")
-{{- if eq $q.ResultKind ":exec" }}
+{{- if $q.Executable }}
 	cmdTag, err := q.conn.Exec(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
 		return {{ $q.EmitZeroResult }}, fmt.Errorf("exec query {{ $q.Name }}: %w", q.errWrap(err))

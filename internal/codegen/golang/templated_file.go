@@ -148,6 +148,10 @@ func getLongestInput(inputs []TemplatedParam) (int, int) {
 	return nameLen, typeLen
 }
 
+func (tq TemplatedQuery) Executable() bool {
+	return tq.ResultKind == ast.ResultKindExec || tq.ResultKind == ast.ResultKindSetup
+}
+
 // EmitParamStruct emits the struct definition for query params if needed.
 func (tq TemplatedQuery) EmitParamStruct() string {
 	if tq.isInlineParams() {
