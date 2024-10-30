@@ -74,10 +74,10 @@ func NewQuerier(conn genericConn) *DBQuerier {
 type UnnamedEnum123 string
 
 const (
-	UnnamedEnum123InconvertibleEnumName_0 UnnamedEnum123 = "inconvertible_enum_name"
-	UnnamedEnum123UnnamedLabel1_1         UnnamedEnum123 = ""
-	UnnamedEnum123UnnamedLabel2111_2      UnnamedEnum123 = "111"
-	UnnamedEnum123UnnamedLabel3_3         UnnamedEnum123 = "!!"
+	UnnamedEnum123InconvertibleEnumName UnnamedEnum123 = "inconvertible_enum_name"
+	UnnamedEnum123UnnamedLabel1         UnnamedEnum123 = ""
+	UnnamedEnum123UnnamedLabel2111      UnnamedEnum123 = "111"
+	UnnamedEnum123UnnamedLabel3         UnnamedEnum123 = "!!"
 )
 
 func (u UnnamedEnum123) String() string { return string(u) }

@@ -142,7 +142,12 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 		}
 
 		if len(stmtDesc.ParamOIDs) != sql.UniqueArgs {
-			return nil, nil, fmt.Errorf("%d unique args are written in the query; but got oids for %d. this likely indicates that an argument cannot be bound, for example `CREATE VIEW pggen.arg('view_name') AS (SELECT 1)` would result in this error", sql.UniqueArgs, len(stmtDesc.ParamOIDs))
+			fundamentalError := fmt.Errorf("%d unique args are written in the query but got oids for %d", sql.UniqueArgs, len(stmtDesc.ParamOIDs))
+			if len(stmtDesc.ParamOIDs) < sql.UniqueArgs {
+				return nil, nil, fmt.Errorf("%s, this likely indicates that an argument can be parsed but not bound, for example `CREATE VIEW pggen.arg('view_name') AS (SELECT 1)` would result in this error", fundamentalError)
+			}
+
+			return nil, nil, fmt.Errorf("%s, this either indicates a bug or a positional parameter being used directly in a query instead of `pggen.arg('arg_name')`", fundamentalError)
 		}
 
 		statements = append(statements, stmtDesc)

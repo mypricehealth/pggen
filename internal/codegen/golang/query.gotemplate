@@ -9,7 +9,6 @@ import (
 {{ range $pkg := .Imports.Get }}	"{{$pkg}}"
 {{ end -}}
 {{- if .IsLeader -}}	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
-    "sync"
 {{- "\n" -}}
 {{- end -}}
 )
@@ -45,7 +44,7 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
-    TypeMap() *pgtype.Map
+	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 

@@ -316,7 +316,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				args[i] = i
 			}
 
-			denseSQL := []ast.DenseSQL{{SQL: tt.denseSQL, Args: args}}
+			denseSQL := []ast.DenseSQL{{SQL: tt.denseSQL, Args: args, UniqueArgs: tt.argCount}}
 
 			tt.query.DenseSQL = denseSQL
 			tt.query.PreparedSQL = tt.denseSQL

@@ -152,7 +152,7 @@ func (p *parser) handleCommentGroup(prev gotok.Pos) {
 	var endLine int
 
 	if p.file.Line(p.pos) == p.file.Line(prev) {
-		// The comment is on same line as the previous token; it/ cannot be a
+		// The comment is on same line as the previous token; it cannot be a
 		// lead comment but may be a line comment.
 		comment, endLine = p.consumeCommentGroup(0)
 	}
@@ -238,6 +238,8 @@ func (p *parser) parseQuery() ast.Query {
 
 	queryStartPos := pos - 1
 	var endPos gotok.Pos
+
+	var nextLeadComments ast.CommentGroup
 	for {
 		if p.tok == token.EOF || p.tok == token.Illegal {
 			p.error(p.pos, "unterminated query (no semicolon): "+string(p.src[pos:p.pos]))
@@ -292,12 +294,21 @@ func (p *parser) parseQuery() ast.Query {
 			denseSQL = append(denseSQL, dense)
 		}
 
+		// A series of line comments may actually be leading comments to the next query group so they must be tracked.
+		if p.tok == token.LineComment {
+			nextLeadComments.List = append(nextLeadComments.List, &ast.LineComment{Start: p.pos, Text: p.lit})
+		} else {
+			nextLeadComments.List = slices.Delete(nextLeadComments.List, 0, len(nextLeadComments.List))
+		}
+
 		newQueryGroup := (p.tok == token.LineComment && nameAnnotationRegexp.Match([]byte(p.lit)))
 		atValidEOF := (p.tok == token.EOF && lastWasSemicolon)
 
 		if newQueryGroup {
-			preparedSQL.Write(p.src[prev : p.pos-1])
-			p.handleCommentGroup(prev)
+			p.leadComment = &nextLeadComments
+
+			// Advance past this final comment so that the next `parseQuery` call starts at the correct position.
+			p.next0()
 		}
 
 		if newQueryGroup || atValidEOF {

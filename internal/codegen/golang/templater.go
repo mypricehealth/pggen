@@ -105,6 +105,7 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 	if isLeader {
 		imports.AddPackage("github.com/jackc/pgx/v5/pgtype")
 		imports.AddPackage("github.com/jackc/pgx/v5")
+		imports.AddPackage("sync")
 	}
 
 	pkgPath := ""
