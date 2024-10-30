@@ -88,8 +88,7 @@ var (
 	Float64pSlice = MustParseKnownType("[]*float64", pg.Float8Array)
 	ByteSlice     = MustParseKnownType("[]byte", pg.Bytea)
 	JSON          = MustParseKnownType("encoding/json.RawMessage", pg.JSON)
-	JSONB         = MustParseKnownType("encoding/json.RawMessage", pg.JSONB)
-	JSONBArray    = MustParseKnownType("encoding/[]json.RawMessage", pg.JSONBArray)
+	JSONSlice     = MustParseKnownType("encoding/[]json.RawMessage", pg.JSONBArray)
 	Time          = MustParseKnownType("time.Time", pg.Timestamptz)
 	Timep         = MustParseKnownType("*time.Time", pg.Timestamptz)
 	TimeSlice     = MustParseKnownType("[]time.Time", pg.TimestamptzArray)
@@ -159,7 +158,7 @@ var (
 	PgRecord           = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Record", pg.Record)
 	PgUUID             = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.UUID", pg.UUID)
 	PgUUIDArray        = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.FlatArray[[16]byte]", pg.UUIDArray)
-	PgJSONB            = MustParseKnownType("*string", pg.JSONB)
+	PgJSONB            = MustParseKnownType("*encoding/json.RawMessage", pg.JSONB)
 	PgJSONBArray       = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.FlatArray[*string]", pg.JSONBArray)
 	PgInt4range        = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Int4range", pg.Int4range)
 	PgNumrange         = MustParseKnownType("github.com/jackc/pgx/v5/pgtype.Numrange", pg.Numrange)
@@ -199,7 +198,7 @@ var knownTypesByOID = map[uint32]knownGoType{
 	pgtype.TIDOID:              {PgTID, nil, nil},
 	pgtype.XIDOID:              {PgXID, nil, nil},
 	pgtype.CIDOID:              {PgCID, nil, nil},
-	pgtype.JSONOID:             {PgJSON, Stringp, String},
+	pgtype.JSONOID:             {PgJSON, JSON, JSON},
 	pgtype.PointOID:            {PgPoint, nil, nil},
 	pgtype.LsegOID:             {PgLseg, nil, nil},
 	pgtype.PathOID:             {PgPath, nil, nil},
@@ -247,8 +246,8 @@ var knownTypesByOID = map[uint32]knownGoType{
 	pgtype.RecordOID:           {PgRecord, nil, nil},
 	pgtype.UUIDOID:             {PgUUID, Stringp, String},
 	pgtype.UUIDArrayOID:        {PgUUIDArray, StringpSlice, StringSlice},
-	pgtype.JSONBOID:            {PgJSONB, Stringp, String},
-	pgtype.JSONBArrayOID:       {PgJSONBArray, StringpSlice, StringSlice},
+	pgtype.JSONBOID:            {PgJSONB, JSON, JSON},
+	pgtype.JSONBArrayOID:       {PgJSONBArray, JSONSlice, JSONSlice},
 	pgtype.Int4rangeOID:        {PgInt4range, nil, nil},
 	pgtype.NumrangeOID:         {PgNumrange, nil, nil},
 	pgtype.TsrangeOID:          {PgTsrange, nil, nil},

@@ -130,6 +130,17 @@ func TestTypeResolver_Resolve(t *testing.T) {
 			},
 		},
 		{
+			name:   "_bigint - _int8",
+			pgType: pg.BaseType{Name: "jsonb", ID: pgtype.JSONBOID},
+			want: &gotype.ImportType{
+				PkgPath: "encoding/json",
+				Type: &gotype.OpaqueType{
+					PgType: pg.BaseType{Name: "jsonb", ID: pgtype.JSONBOID},
+					Name:   "RawMessage",
+				},
+			},
+		},
+		{
 			name:      "_real - _float4 custom type",
 			overrides: map[string]string{"_real": "[]example.com/custom.F32"},
 			pgType:    pg.ArrayType{ID: pgtype.Float4ArrayOID, Name: "_float4", Elem: pg.BaseType{Name: "_float4", ID: pgtype.Float4OID}},
