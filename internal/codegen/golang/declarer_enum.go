@@ -1,9 +1,10 @@
 package golang
 
 import (
-	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 	"strconv"
 	"strings"
+
+	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 )
 
 func NameEnumTranscoderFunc(typ *gotype.EnumType) string {
@@ -83,6 +84,8 @@ func (e EnumTranscoderDeclarer) DedupeKey() string {
 }
 
 func (e EnumTranscoderDeclarer) Declare(string) (string, error) {
+	return "", nil
+
 	sb := &strings.Builder{}
 	funcName := NameEnumTranscoderFunc(e.typ)
 

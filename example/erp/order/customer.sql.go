@@ -6,10 +6,13 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 type QueryName struct{}
@@ -26,7 +29,7 @@ type Querier interface {
 
 	InsertOrder(ctx context.Context, params InsertOrderParams) (InsertOrderRow, error)
 
-	FindOrdersByPrice(ctx context.Context, minTotal pgtype.Numeric) ([]FindOrdersByPriceRow, error)
+	FindOrdersByPrice(ctx context.Context, minTotal decimal.Decimal) ([]FindOrdersByPriceRow, error)
 
 	FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, error)
 }
@@ -34,7 +37,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -42,11 +46,46 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
+}
+
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
+		}
+	})
+
+	return registerErr
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
 }
 
 const createTenantSQL = `INSERT INTO tenant (tenant_id, name)
@@ -61,13 +100,18 @@ type CreateTenantRow struct {
 
 // CreateTenant implements Querier.CreateTenant.
 func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (CreateTenantRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return CreateTenantRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "CreateTenant")
 	rows, err := q.conn.Query(ctx, createTenantSQL, key, name)
 	if err != nil {
-		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", err)
+		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
+	return res, q.errWrap(err)
 }
 
 const findOrdersByCustomerSQL = `SELECT *
@@ -75,21 +119,26 @@ FROM orders
 WHERE customer_id = $1;`
 
 type FindOrdersByCustomerRow struct {
-	OrderID    int32              `json:"order_id"`
-	OrderDate  pgtype.Timestamptz `json:"order_date"`
-	OrderTotal pgtype.Numeric     `json:"order_total"`
-	CustomerID *int32             `json:"customer_id"`
+	OrderID    int32           `json:"order_id"`
+	OrderDate  time.Time       `json:"order_date"`
+	OrderTotal decimal.Decimal `json:"order_total"`
+	CustomerID *int32          `json:"customer_id"`
 }
 
 // FindOrdersByCustomer implements Querier.FindOrdersByCustomer.
 func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) ([]FindOrdersByCustomerRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByCustomer")
 	rows, err := q.conn.Query(ctx, findOrdersByCustomerSQL, customerID)
 	if err != nil {
-		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", err)
+		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
+	return res, q.errWrap(err)
 }
 
 const findProductsInOrderSQL = `SELECT o.order_id, p.product_id, p.name
@@ -106,13 +155,18 @@ type FindProductsInOrderRow struct {
 
 // FindProductsInOrder implements Querier.FindProductsInOrder.
 func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]FindProductsInOrderRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindProductsInOrder")
 	rows, err := q.conn.Query(ctx, findProductsInOrderSQL, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("query FindProductsInOrder: %w", err)
+		return nil, fmt.Errorf("query FindProductsInOrder: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
+	return res, q.errWrap(err)
 }
 
 const insertCustomerSQL = `INSERT INTO customer (first_name, last_name, email)
@@ -134,13 +188,18 @@ type InsertCustomerRow struct {
 
 // InsertCustomer implements Querier.InsertCustomer.
 func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerParams) (InsertCustomerRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return InsertCustomerRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "InsertCustomer")
 	rows, err := q.conn.Query(ctx, insertCustomerSQL, params.FirstName, params.LastName, params.Email)
 	if err != nil {
-		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", err)
+		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
+	return res, q.errWrap(err)
 }
 
 const insertOrderSQL = `INSERT INTO orders (order_date, order_total, customer_id)
@@ -148,80 +207,30 @@ VALUES ($1, $2, $3)
 RETURNING *;`
 
 type InsertOrderParams struct {
-	OrderDate  pgtype.Timestamptz `json:"order_date"`
-	OrderTotal pgtype.Numeric     `json:"order_total"`
-	CustID     int32              `json:"cust_id"`
+	OrderDate  time.Time       `json:"order_date"`
+	OrderTotal decimal.Decimal `json:"order_total"`
+	CustID     int32           `json:"cust_id"`
 }
 
 type InsertOrderRow struct {
-	OrderID    int32              `json:"order_id"`
-	OrderDate  pgtype.Timestamptz `json:"order_date"`
-	OrderTotal pgtype.Numeric     `json:"order_total"`
-	CustomerID *int32             `json:"customer_id"`
+	OrderID    int32           `json:"order_id"`
+	OrderDate  time.Time       `json:"order_date"`
+	OrderTotal decimal.Decimal `json:"order_total"`
+	CustomerID *int32          `json:"customer_id"`
 }
 
 // InsertOrder implements Querier.InsertOrder.
 func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (InsertOrderRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return InsertOrderRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "InsertOrder")
 	rows, err := q.conn.Query(ctx, insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
 	if err != nil {
-		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", err)
+		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
-}
-
-type scanCacheKey struct {
-	oid      uint32
-	format   int16
-	typeName string
-}
-
-var (
-	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
-	plansMu sync.RWMutex
-)
-
-func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return plan
-}
-
-type ptrScanner[T any] struct {
-	basePlan pgtype.ScanPlan
-}
-
-func (s ptrScanner[T]) Scan(src []byte, dst any) error {
-	if src == nil {
-		return nil
-	}
-	d := dst.(**T)
-	*d = new(T)
-	return s.basePlan.Scan(src, *d)
-}
-
-func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	basePlan := planScan(codec, fd, target)
-	ptrPlan := ptrScanner[T]{basePlan}
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return ptrPlan
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
+	return res, q.errWrap(err)
 }

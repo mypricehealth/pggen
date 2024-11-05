@@ -40,21 +40,22 @@ func TestInferrer_InferTypes(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name  string
-		query *ast.SourceQuery
-		want  TypedQuery
+		name              string
+		query             *ast.SourceQuery
+		contiguousArgsSQL string
+		argCount          int
+		want              TypedQuery
 	}{
 		{
 			name: "literal query",
 			query: &ast.SourceQuery{
-				Name:        "LiteralQuery",
-				PreparedSQL: "SELECT 1 as one, 'foo' as two",
-				ResultKind:  ast.ResultKindOne,
+				Name:       "LiteralQuery",
+				ResultKind: ast.ResultKindOne,
 			},
+			contiguousArgsSQL: "SELECT 1 as one, 'foo' as two",
 			want: TypedQuery{
-				Name:        "LiteralQuery",
-				ResultKind:  ast.ResultKindOne,
-				PreparedSQL: "SELECT 1 as one, 'foo' as two",
+				Name:       "LiteralQuery",
+				ResultKind: ast.ResultKindOne,
 				Outputs: []OutputColumn{
 					{PgName: "one", PgType: pg.Int4, Nullable: false},
 					{PgName: "two", PgType: pg.Text, Nullable: false},
@@ -64,14 +65,13 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "union one col",
 			query: &ast.SourceQuery{
-				Name:        "UnionOneCol",
-				PreparedSQL: "SELECT 1 AS num UNION SELECT 2 AS num",
-				ResultKind:  ast.ResultKindMany,
+				Name:       "UnionOneCol",
+				ResultKind: ast.ResultKindMany,
 			},
+			contiguousArgsSQL: "SELECT 1 AS num UNION SELECT 2 AS num",
 			want: TypedQuery{
-				Name:        "UnionOneCol",
-				ResultKind:  ast.ResultKindMany,
-				PreparedSQL: "SELECT 1 AS num UNION SELECT 2 AS num",
+				Name:       "UnionOneCol",
+				ResultKind: ast.ResultKindMany,
 				Outputs: []OutputColumn{
 					{PgName: "num", PgType: pg.Int4, Nullable: true},
 				},
@@ -80,14 +80,13 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "one col domain type",
 			query: &ast.SourceQuery{
-				Name:        "Domain",
-				PreparedSQL: "SELECT '94109'::us_postal_code",
-				ResultKind:  ast.ResultKindOne,
+				Name:       "Domain",
+				ResultKind: ast.ResultKindOne,
 			},
+			contiguousArgsSQL: "SELECT '94109'::us_postal_code",
 			want: TypedQuery{
-				Name:        "Domain",
-				ResultKind:  ast.ResultKindOne,
-				PreparedSQL: "SELECT '94109'::us_postal_code",
+				Name:       "Domain",
+				ResultKind: ast.ResultKindOne,
 				Outputs: []OutputColumn{{
 					PgName:   "us_postal_code",
 					PgType:   pg.Text,
@@ -98,22 +97,17 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "one col domain type",
 			query: &ast.SourceQuery{
-				Name: "UnionEnumArrays",
-				PreparedSQL: texts.Dedent(`
-					SELECT enum_range('phone'::device_type, 'phone'::device_type) AS device_types
-					UNION ALL
-					SELECT enum_range(NULL::device_type) AS device_types;
-				`),
+				Name:       "UnionEnumArrays",
 				ResultKind: ast.ResultKindMany,
 			},
+			contiguousArgsSQL: texts.Dedent(`
+                SELECT enum_range('phone'::device_type, 'phone'::device_type) AS device_types
+                UNION ALL
+                SELECT enum_range(NULL::device_type) AS device_types;
+            `),
 			want: TypedQuery{
 				Name:       "UnionEnumArrays",
 				ResultKind: ast.ResultKindMany,
-				PreparedSQL: texts.Dedent(`
-					SELECT enum_range('phone'::device_type, 'phone'::device_type) AS device_types
-					UNION ALL
-					SELECT enum_range(NULL::device_type) AS device_types;
-				`),
 				Outputs: []OutputColumn{
 					{
 						PgName: "device_types",
@@ -135,17 +129,17 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "find by first name",
 			query: &ast.SourceQuery{
-				Name:        "FindByFirstName",
-				PreparedSQL: "SELECT first_name FROM author WHERE first_name = $1;",
-				Params:      []ast.Param{{Name: "FirstName"}},
-				ResultKind:  ast.ResultKindMany,
-				Doc:         newCommentGroup("--   Hello  ", "-- name: Foo"),
+				Name:       "FindByFirstName",
+				Params:     []ast.Param{{Name: "FirstName"}},
+				ResultKind: ast.ResultKindMany,
+				Doc:        newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
+			contiguousArgsSQL: "SELECT first_name FROM author WHERE first_name = $1;",
+			argCount:          1,
 			want: TypedQuery{
-				Name:        "FindByFirstName",
-				ResultKind:  ast.ResultKindMany,
-				Doc:         []string{"Hello"},
-				PreparedSQL: "SELECT first_name FROM author WHERE first_name = $1;",
+				Name:       "FindByFirstName",
+				ResultKind: ast.ResultKindMany,
+				Doc:        []string{"Hello"},
 				Inputs: []InputParam{
 					{PgName: "FirstName", PgType: pg.Text},
 				},
@@ -157,17 +151,17 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "find by first name join",
 			query: &ast.SourceQuery{
-				Name:        "FindByFirstNameJoin",
-				PreparedSQL: "SELECT a1.first_name FROM author a1 JOIN author a2 USING (author_id) WHERE a1.first_name = $1;",
-				Params:      []ast.Param{{Name: "FirstName"}},
-				ResultKind:  ast.ResultKindMany,
-				Doc:         newCommentGroup("--   Hello  ", "-- name: Foo"),
+				Name:       "FindByFirstNameJoin",
+				Params:     []ast.Param{{Name: "FirstName"}},
+				ResultKind: ast.ResultKindMany,
+				Doc:        newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
+			contiguousArgsSQL: "SELECT a1.first_name FROM author a1 JOIN author a2 USING (author_id) WHERE a1.first_name = $1;",
+			argCount:          1,
 			want: TypedQuery{
-				Name:        "FindByFirstNameJoin",
-				ResultKind:  ast.ResultKindMany,
-				Doc:         []string{"Hello"},
-				PreparedSQL: "SELECT a1.first_name FROM author a1 JOIN author a2 USING (author_id) WHERE a1.first_name = $1;",
+				Name:       "FindByFirstNameJoin",
+				ResultKind: ast.ResultKindMany,
+				Doc:        []string{"Hello"},
 				Inputs: []InputParam{
 					{PgName: "FirstName", PgType: pg.Text},
 				},
@@ -179,17 +173,17 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "delete by author ID",
 			query: &ast.SourceQuery{
-				Name:        "DeleteAuthorByID",
-				PreparedSQL: "DELETE FROM author WHERE author_id = $1;",
-				Params:      []ast.Param{{Name: "AuthorID"}},
-				ResultKind:  ast.ResultKindExec,
-				Doc:         newCommentGroup("-- One", "--- - two", "-- name: Foo"),
+				Name:       "DeleteAuthorByID",
+				Params:     []ast.Param{{Name: "AuthorID"}},
+				ResultKind: ast.ResultKindExec,
+				Doc:        newCommentGroup("-- One", "--- - two", "-- name: Foo"),
 			},
+			contiguousArgsSQL: "DELETE FROM author WHERE author_id = $1;",
+			argCount:          1,
 			want: TypedQuery{
-				Name:        "DeleteAuthorByID",
-				ResultKind:  ast.ResultKindExec,
-				Doc:         []string{"One", "- two"},
-				PreparedSQL: "DELETE FROM author WHERE author_id = $1;",
+				Name:       "DeleteAuthorByID",
+				ResultKind: ast.ResultKindExec,
+				Doc:        []string{"One", "- two"},
 				Inputs: []InputParam{
 					{PgName: "AuthorID", PgType: pg.Int4},
 				},
@@ -199,15 +193,15 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "delete by author id returning",
 			query: &ast.SourceQuery{
-				Name:        "DeleteAuthorByIDReturning",
-				PreparedSQL: "DELETE FROM author WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
-				Params:      []ast.Param{{Name: "AuthorID"}},
-				ResultKind:  ast.ResultKindMany,
+				Name:       "DeleteAuthorByIDReturning",
+				Params:     []ast.Param{{Name: "AuthorID"}},
+				ResultKind: ast.ResultKindMany,
 			},
+			contiguousArgsSQL: "DELETE FROM author WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
+			argCount:          1,
 			want: TypedQuery{
-				Name:        "DeleteAuthorByIDReturning",
-				ResultKind:  ast.ResultKindMany,
-				PreparedSQL: "DELETE FROM author WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
+				Name:       "DeleteAuthorByIDReturning",
+				ResultKind: ast.ResultKindMany,
 				Inputs: []InputParam{
 					{PgName: "AuthorID", PgType: pg.Int4},
 				},
@@ -221,15 +215,15 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "update by author id returning",
 			query: &ast.SourceQuery{
-				Name:        "UpdateByAuthorIDReturning",
-				PreparedSQL: "UPDATE author set first_name = 'foo' WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
-				Params:      []ast.Param{{Name: "AuthorID"}},
-				ResultKind:  ast.ResultKindMany,
+				Name:       "UpdateByAuthorIDReturning",
+				Params:     []ast.Param{{Name: "AuthorID"}},
+				ResultKind: ast.ResultKindMany,
 			},
+			contiguousArgsSQL: "UPDATE author set first_name = 'foo' WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
+			argCount:          1,
 			want: TypedQuery{
-				Name:        "UpdateByAuthorIDReturning",
-				ResultKind:  ast.ResultKindMany,
-				PreparedSQL: "UPDATE author set first_name = 'foo' WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
+				Name:       "UpdateByAuthorIDReturning",
+				ResultKind: ast.ResultKindMany,
 				Inputs: []InputParam{
 					{PgName: "AuthorID", PgType: pg.Int4},
 				},
@@ -243,16 +237,15 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "void one",
 			query: &ast.SourceQuery{
-				Name:        "VoidOne",
-				PreparedSQL: "SELECT ''::void;",
-				Params:      []ast.Param{},
-				ResultKind:  ast.ResultKindExec,
+				Name:       "VoidOne",
+				Params:     []ast.Param{},
+				ResultKind: ast.ResultKindExec,
 			},
+			contiguousArgsSQL: "SELECT ''::void;",
 			want: TypedQuery{
-				Name:        "VoidOne",
-				ResultKind:  ast.ResultKindExec,
-				PreparedSQL: "SELECT ''::void;",
-				Inputs:      nil,
+				Name:       "VoidOne",
+				ResultKind: ast.ResultKindExec,
+				Inputs:     nil,
 				Outputs: []OutputColumn{
 					{PgName: "void", PgType: pg.Void, Nullable: false},
 				},
@@ -261,16 +254,15 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "void two",
 			query: &ast.SourceQuery{
-				Name:        "VoidTwo",
-				PreparedSQL: "SELECT 'foo' as foo, ''::void;",
-				Params:      []ast.Param{},
-				ResultKind:  ast.ResultKindOne,
+				Name:       "VoidTwo",
+				Params:     []ast.Param{},
+				ResultKind: ast.ResultKindOne,
 			},
+			contiguousArgsSQL: "SELECT 'foo' as foo, ''::void;",
 			want: TypedQuery{
-				Name:        "VoidTwo",
-				ResultKind:  ast.ResultKindOne,
-				PreparedSQL: "SELECT 'foo' as foo, ''::void;",
-				Inputs:      nil,
+				Name:       "VoidTwo",
+				ResultKind: ast.ResultKindOne,
+				Inputs:     nil,
 				Outputs: []OutputColumn{
 					{PgName: "foo", PgType: pg.Text, Nullable: false},
 					{PgName: "void", PgType: pg.Void, Nullable: false},
@@ -278,17 +270,16 @@ func TestInferrer_InferTypes(t *testing.T) {
 			},
 		},
 		{
-			"pragma proto type",
-			&ast.SourceQuery{
-				Name:        "PragmaProtoType",
-				PreparedSQL: "SELECT 1 as one, 'foo' as two",
-				ResultKind:  ast.ResultKindOne,
-				Pragmas:     ast.Pragmas{ProtobufType: "foo.Bar"},
+			name: "pragma proto type",
+			query: &ast.SourceQuery{
+				Name:       "PragmaProtoType",
+				ResultKind: ast.ResultKindOne,
+				Pragmas:    ast.Pragmas{ProtobufType: "foo.Bar"},
 			},
-			TypedQuery{
-				Name:        "PragmaProtoType",
-				ResultKind:  ast.ResultKindOne,
-				PreparedSQL: "SELECT 1 as one, 'foo' as two",
+			contiguousArgsSQL: "SELECT 1 as one, 'foo' as two",
+			want: TypedQuery{
+				Name:       "PragmaProtoType",
+				ResultKind: ast.ResultKindOne,
 				Outputs: []OutputColumn{
 					{PgName: "one", PgType: pg.Int4, Nullable: false},
 					{PgName: "two", PgType: pg.Text, Nullable: false},
@@ -299,18 +290,17 @@ func TestInferrer_InferTypes(t *testing.T) {
 		{
 			name: "aggregate non-null column has null output",
 			query: &ast.SourceQuery{
-				Name:        "ArrayAggFirstName",
-				PreparedSQL: "SELECT array_agg(first_name) AS names FROM author;",
-				Params:      []ast.Param{},
-				ResultKind:  ast.ResultKindOne,
-				Doc:         newCommentGroup("--   Hello  ", "-- name: Foo"),
+				Name:       "ArrayAggFirstName",
+				Params:     []ast.Param{},
+				ResultKind: ast.ResultKindOne,
+				Doc:        newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
+			contiguousArgsSQL: "SELECT array_agg(first_name) AS names FROM author;",
 			want: TypedQuery{
-				Name:        "ArrayAggFirstName",
-				ResultKind:  ast.ResultKindOne,
-				Doc:         []string{"Hello"},
-				PreparedSQL: "SELECT array_agg(first_name) AS names FROM author;",
-				Inputs:      []InputParam{},
+				Name:       "ArrayAggFirstName",
+				ResultKind: ast.ResultKindOne,
+				Doc:        []string{"Hello"},
+				Inputs:     []InputParam{},
 				Outputs: []OutputColumn{
 					{PgName: "names", PgType: pg.TextArray, Nullable: true},
 				},
@@ -320,6 +310,20 @@ func TestInferrer_InferTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			inferrer := NewInferrer(conn)
+
+			args := make([]int, tt.argCount)
+			for i := 0; i < tt.argCount; i++ {
+				args[i] = i
+			}
+
+			contiguousArgs := []ast.ContiguousArgsSQL{{SQL: tt.contiguousArgsSQL, Args: args, UniqueArgs: tt.argCount}}
+
+			tt.query.ContiguousArgsSQL = contiguousArgs
+			tt.query.PreparedSQL = tt.contiguousArgsSQL
+
+			tt.want.ContiguousArgsSQL = contiguousArgs
+			tt.want.PreparedSQL = tt.contiguousArgsSQL
+
 			got, err := inferrer.InferTypes(tt.query)
 			if err != nil {
 				t.Fatal(err)
@@ -330,6 +334,44 @@ func TestInferrer_InferTypes(t *testing.T) {
 			difftest.AssertSame(t, tt.want, got, opts)
 		})
 	}
+}
+
+func TestInferrer_InferTypes_Multi(t *testing.T) {
+	query := &ast.SourceQuery{
+		Name:              "MultiQuery",
+		ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "SELECT $1::text;", Args: []int{0}}, {SQL: "SELECT $1::text[];", Args: []int{1}}},
+		PreparedSQL:       "SELECT $1::text; SELECT $2::text[];",
+		Params:            []ast.Param{{Name: "TextParam"}, {Name: "TextArrayParam"}},
+		ResultKind:        ast.ResultKindOne,
+	}
+
+	want := TypedQuery{
+		Name:              "MultiQuery",
+		ResultKind:        ast.ResultKindOne,
+		ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "SELECT $1::text;", Args: []int{0}}, {SQL: "SELECT $1::text[];", Args: []int{1}}},
+		PreparedSQL:       "SELECT $1::text; SELECT $2::text[];",
+		Inputs: []InputParam{
+			{PgName: "TextParam", PgType: pg.Text},
+			{PgName: "TextArrayParam", PgType: pg.TextArray},
+		},
+		Outputs: []OutputColumn{
+			{PgName: "text", PgType: pg.TextArray, Nullable: false},
+		},
+	}
+
+	conn, cleanupFunc := pgtest.NewPostgresSchemaString(t, "")
+	defer cleanupFunc()
+
+	inferrer := NewInferrer(conn)
+
+	got, err := inferrer.InferTypes(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cmp.Options{
+		cmpopts.IgnoreFields(pg.EnumType{}, "ChildOIDs"),
+	}
+	difftest.AssertSame(t, want, got, opts)
 }
 
 func TestInferrer_InferTypes_Error(t *testing.T) {
@@ -344,38 +386,41 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 	}{
 		{
 			&ast.SourceQuery{
-				Name:        "DeleteAuthorByIDMany",
-				PreparedSQL: "DELETE FROM author WHERE author_id = $1;",
-				Params:      []ast.Param{{Name: "AuthorID"}},
-				ResultKind:  ast.ResultKindMany,
+				Name:              "DeleteAuthorByIDMany",
+				ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "DELETE FROM author WHERE author_id = $1;", Args: []int{0}}},
+				PreparedSQL:       "DELETE FROM author WHERE author_id = $1;",
+				Params:            []ast.Param{{Name: "AuthorID"}},
+				ResultKind:        ast.ResultKindMany,
 			},
 			errors.New("query DeleteAuthorByIDMany has incompatible result kind :many; " +
 				"the query doesn't return any columns; " +
-				"use :exec if query shouldn't return any columns"),
+				"use :exec or :setup if the query shouldn't return any columns"),
 		},
 		{
 			&ast.SourceQuery{
-				Name:        "DeleteAuthorByIDOne",
-				PreparedSQL: "DELETE FROM author WHERE author_id = $1;",
-				Params:      []ast.Param{{Name: "AuthorID"}},
-				ResultKind:  ast.ResultKindOne,
+				Name:              "DeleteAuthorByIDOne",
+				ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "DELETE FROM author WHERE author_id = $1;", Args: []int{0}}},
+				PreparedSQL:       "DELETE FROM author WHERE author_id = $1;",
+				Params:            []ast.Param{{Name: "AuthorID"}},
+				ResultKind:        ast.ResultKindOne,
 			},
 			errors.New(
 				"query DeleteAuthorByIDOne has incompatible result kind :one; " +
 					"the query doesn't return any columns; " +
-					"use :exec if query shouldn't return any columns"),
+					"use :exec or :setup if the query shouldn't return any columns"),
 		},
 		{
 			&ast.SourceQuery{
-				Name:        "VoidOne",
-				PreparedSQL: "SELECT ''::void;",
-				Params:      nil,
-				ResultKind:  ast.ResultKindMany,
+				Name:              "VoidOne",
+				ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "SELECT ''::void;"}},
+				PreparedSQL:       "SELECT ''::void;",
+				Params:            nil,
+				ResultKind:        ast.ResultKindMany,
 			},
 			errors.New(
 				"query VoidOne has incompatible result kind :many; " +
 					"the query only has void columns; " +
-					"use :exec if query shouldn't return any columns"),
+					"use :exec or :setup if the query shouldn't return any columns"),
 		},
 	}
 	for _, tt := range tests {

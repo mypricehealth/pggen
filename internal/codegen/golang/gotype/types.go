@@ -3,12 +3,13 @@ package gotype
 import (
 	"bytes"
 	"fmt"
-	"github.com/mypricehealth/pggen/internal/casing"
-	"github.com/mypricehealth/pggen/internal/pg"
 	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/mypricehealth/pggen/internal/casing"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 // Type is a Go type.
@@ -173,7 +174,7 @@ func NewEnumType(pkgPath string, pgEnum pg.EnumType, caser casing.Caser) Type {
 	typ := &EnumType{
 		PgEnum: pgEnum,
 		Name:   name,
-		Labels: labels,
+		Labels: makeUnique(labels),
 		Values: values,
 	}
 	if pkgPath != "" {
@@ -183,6 +184,31 @@ func NewEnumType(pkgPath string, pgEnum pg.EnumType, caser casing.Caser) Type {
 		}
 	}
 	return typ
+}
+
+func makeUnique(labels []string) []string {
+	unique := make(map[string]bool, len(labels))
+	for _, label := range labels {
+		if _, ok := unique[label]; ok {
+			unique[label] = false
+			continue
+		}
+
+		unique[label] = true
+	}
+
+	// There's technically the possibility of conflicts still.
+	// However at that point the name would get much worse.
+	uniqueItems := make([]string, 0, len(labels))
+	for i, label := range labels {
+		if isUnique := unique[label]; !isUnique {
+			label = fmt.Sprintf("%s_%d", label, i)
+		}
+
+		uniqueItems = append(uniqueItems, label)
+	}
+
+	return uniqueItems
 }
 
 // ParseOpaqueType creates a Type by parsing a fully qualified Go type like
@@ -207,6 +233,10 @@ func ParseOpaqueType(qualType string, pgType pg.Type) (Type, error) {
 	}
 	idx := bytes.LastIndexByte(bs, '.')
 	name := string(bs[idx+1:])
+	if genericIdx := bytes.IndexByte(bs, '['); genericIdx != -1 {
+		idx = bytes.LastIndexByte(bs[:genericIdx], '.')
+		name = string(bs[idx+1:])
+	}
 	var typ Type = &OpaqueType{Name: name}
 	// On array types, the PgType goes on the Array. In all other cases, it
 	// goes on the OpaqueType.

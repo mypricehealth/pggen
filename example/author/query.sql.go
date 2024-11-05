@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -52,7 +53,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -60,11 +62,46 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
+}
+
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
+		}
+	})
+
+	return registerErr
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
 }
 
 const findAuthorByIDSQL = `SELECT * FROM author WHERE author_id = $1;`
@@ -78,13 +115,18 @@ type FindAuthorByIDRow struct {
 
 // FindAuthorByID implements Querier.FindAuthorByID.
 func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAuthorByIDRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return FindAuthorByIDRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
 	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, authorID)
 	if err != nil {
-		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", err)
+		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindAuthorByIDRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindAuthorByIDRow])
+	return res, q.errWrap(err)
 }
 
 const findAuthorsSQL = `SELECT * FROM author WHERE first_name = $1;`
@@ -98,13 +140,18 @@ type FindAuthorsRow struct {
 
 // FindAuthors implements Querier.FindAuthors.
 func (q *DBQuerier) FindAuthors(ctx context.Context, firstName string) ([]FindAuthorsRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthors")
 	rows, err := q.conn.Query(ctx, findAuthorsSQL, firstName)
 	if err != nil {
-		return nil, fmt.Errorf("query FindAuthors: %w", err)
+		return nil, fmt.Errorf("query FindAuthors: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindAuthorsRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindAuthorsRow])
+	return res, q.errWrap(err)
 }
 
 const findAuthorNamesSQL = `SELECT first_name, last_name FROM author ORDER BY author_id = $1;`
@@ -116,50 +163,70 @@ type FindAuthorNamesRow struct {
 
 // FindAuthorNames implements Querier.FindAuthorNames.
 func (q *DBQuerier) FindAuthorNames(ctx context.Context, authorID int32) ([]FindAuthorNamesRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorNames")
 	rows, err := q.conn.Query(ctx, findAuthorNamesSQL, authorID)
 	if err != nil {
-		return nil, fmt.Errorf("query FindAuthorNames: %w", err)
+		return nil, fmt.Errorf("query FindAuthorNames: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindAuthorNamesRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindAuthorNamesRow])
+	return res, q.errWrap(err)
 }
 
 const findFirstNamesSQL = `SELECT first_name FROM author ORDER BY author_id = $1;`
 
 // FindFirstNames implements Querier.FindFirstNames.
 func (q *DBQuerier) FindFirstNames(ctx context.Context, authorID int32) ([]*string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindFirstNames")
 	rows, err := q.conn.Query(ctx, findFirstNamesSQL, authorID)
 	if err != nil {
-		return nil, fmt.Errorf("query FindFirstNames: %w", err)
+		return nil, fmt.Errorf("query FindFirstNames: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[*string])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[*string])
+	return res, q.errWrap(err)
 }
 
 const deleteAuthorsSQL = `DELETE FROM author WHERE first_name = 'joe';`
 
 // DeleteAuthors implements Querier.DeleteAuthors.
 func (q *DBQuerier) DeleteAuthors(ctx context.Context) (pgconn.CommandTag, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthors")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsSQL)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthors: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthors: %w", q.errWrap(err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }
 
 const deleteAuthorsByFirstNameSQL = `DELETE FROM author WHERE first_name = $1;`
 
 // DeleteAuthorsByFirstName implements Querier.DeleteAuthorsByFirstName.
 func (q *DBQuerier) DeleteAuthorsByFirstName(ctx context.Context, firstName string) (pgconn.CommandTag, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFirstName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFirstNameSQL, firstName)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFirstName: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFirstName: %w", q.errWrap(err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }
 
 const deleteAuthorsByFullNameSQL = `DELETE
@@ -176,12 +243,17 @@ type DeleteAuthorsByFullNameParams struct {
 
 // DeleteAuthorsByFullName implements Querier.DeleteAuthorsByFullName.
 func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, params DeleteAuthorsByFullNameParams) (pgconn.CommandTag, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", q.errWrap(err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }
 
 const insertAuthorSQL = `INSERT INTO author (first_name, last_name)
@@ -190,13 +262,18 @@ RETURNING author_id;`
 
 // InsertAuthor implements Querier.InsertAuthor.
 func (q *DBQuerier) InsertAuthor(ctx context.Context, firstName string, lastName string) (int32, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return 0, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
 	rows, err := q.conn.Query(ctx, insertAuthorSQL, firstName, lastName)
 	if err != nil {
-		return 0, fmt.Errorf("query InsertAuthor: %w", err)
+		return 0, fmt.Errorf("query InsertAuthor: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[int32])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int32])
+	return res, q.errWrap(err)
 }
 
 const insertAuthorSuffixSQL = `INSERT INTO author (first_name, last_name, suffix)
@@ -218,92 +295,52 @@ type InsertAuthorSuffixRow struct {
 
 // InsertAuthorSuffix implements Querier.InsertAuthorSuffix.
 func (q *DBQuerier) InsertAuthorSuffix(ctx context.Context, params InsertAuthorSuffixParams) (InsertAuthorSuffixRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return InsertAuthorSuffixRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthorSuffix")
 	rows, err := q.conn.Query(ctx, insertAuthorSuffixSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
-		return InsertAuthorSuffixRow{}, fmt.Errorf("query InsertAuthorSuffix: %w", err)
+		return InsertAuthorSuffixRow{}, fmt.Errorf("query InsertAuthorSuffix: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertAuthorSuffixRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertAuthorSuffixRow])
+	return res, q.errWrap(err)
 }
 
 const stringAggFirstNameSQL = `SELECT string_agg(first_name, ',') AS names FROM author WHERE author_id = $1;`
 
 // StringAggFirstName implements Querier.StringAggFirstName.
 func (q *DBQuerier) StringAggFirstName(ctx context.Context, authorID int32) (*string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "StringAggFirstName")
 	rows, err := q.conn.Query(ctx, stringAggFirstNameSQL, authorID)
 	if err != nil {
-		return nil, fmt.Errorf("query StringAggFirstName: %w", err)
+		return nil, fmt.Errorf("query StringAggFirstName: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
+	return res, q.errWrap(err)
 }
 
 const arrayAggFirstNameSQL = `SELECT array_agg(first_name) AS names FROM author WHERE author_id = $1;`
 
 // ArrayAggFirstName implements Querier.ArrayAggFirstName.
 func (q *DBQuerier) ArrayAggFirstName(ctx context.Context, authorID int32) ([]string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "ArrayAggFirstName")
 	rows, err := q.conn.Query(ctx, arrayAggFirstNameSQL, authorID)
 	if err != nil {
-		return nil, fmt.Errorf("query ArrayAggFirstName: %w", err)
+		return nil, fmt.Errorf("query ArrayAggFirstName: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]string])
-}
-
-type scanCacheKey struct {
-	oid      uint32
-	format   int16
-	typeName string
-}
-
-var (
-	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
-	plansMu sync.RWMutex
-)
-
-func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return plan
-}
-
-type ptrScanner[T any] struct {
-	basePlan pgtype.ScanPlan
-}
-
-func (s ptrScanner[T]) Scan(src []byte, dst any) error {
-	if src == nil {
-		return nil
-	}
-	d := dst.(**T)
-	*d = new(T)
-	return s.basePlan.Scan(src, *d)
-}
-
-func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	basePlan := planScan(codec, fd, target)
-	ptrPlan := ptrScanner[T]{basePlan}
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return ptrPlan
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]string])
+	return res, q.errWrap(err)
 }

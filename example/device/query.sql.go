@@ -5,11 +5,13 @@ package device
 import (
 	"context"
 	"fmt"
+	"net"
+	"sync"
+
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5"
-	"sync"
-	"github.com/jackc/pgx/v5/pgtype.FlatArray[github.com/jackc/pgx/v5/pgtype"
 )
 
 type QueryName struct{}
@@ -28,13 +30,14 @@ type Querier interface {
 
 	InsertUser(ctx context.Context, userID int, name string) (pgconn.CommandTag, error)
 
-	InsertDevice(ctx context.Context, mac pgtype.Macaddr, owner int) (pgconn.CommandTag, error)
+	InsertDevice(ctx context.Context, mac net.HardwareAddr, owner int) (pgconn.CommandTag, error)
 }
 
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -42,11 +45,18 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // User represents the Postgres composite type "user".
@@ -69,6 +79,36 @@ const (
 
 func (d DeviceType) String() string { return string(d) }
 
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
+		}
+	})
+
+	return registerErr
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}
+
+var _ = addTypeToRegister("public.user")
+
 const findDevicesByUserSQL = `SELECT
   id,
   name,
@@ -77,20 +117,25 @@ FROM "user"
 WHERE id = $1;`
 
 type FindDevicesByUserRow struct {
-	ID       int                  `json:"id"`
-	Name     string               `json:"name"`
-	MacAddrs pgtype.MacaddrCodec] `json:"mac_addrs"`
+	ID       int                                `json:"id"`
+	Name     string                             `json:"name"`
+	MacAddrs pgtype.FlatArray[net.HardwareAddr] `json:"mac_addrs"`
 }
 
 // FindDevicesByUser implements Querier.FindDevicesByUser.
 func (q *DBQuerier) FindDevicesByUser(ctx context.Context, id int) ([]FindDevicesByUserRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindDevicesByUser")
 	rows, err := q.conn.Query(ctx, findDevicesByUserSQL, id)
 	if err != nil {
-		return nil, fmt.Errorf("query FindDevicesByUser: %w", err)
+		return nil, fmt.Errorf("query FindDevicesByUser: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindDevicesByUserRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindDevicesByUserRow])
+	return res, q.errWrap(err)
 }
 
 const compositeUserSQL = `SELECT
@@ -101,33 +146,43 @@ FROM device d
   LEFT JOIN "user" u ON u.id = d.owner;`
 
 type CompositeUserRow struct {
-	Mac  pgtype.Macaddr `json:"mac"`
-	Type DeviceType     `json:"type"`
-	User User           `json:"user"`
+	Mac  net.HardwareAddr `json:"mac"`
+	Type DeviceType       `json:"type"`
+	User User             `json:"user"`
 }
 
 // CompositeUser implements Querier.CompositeUser.
 func (q *DBQuerier) CompositeUser(ctx context.Context) ([]CompositeUserRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUser")
 	rows, err := q.conn.Query(ctx, compositeUserSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query CompositeUser: %w", err)
+		return nil, fmt.Errorf("query CompositeUser: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[CompositeUserRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[CompositeUserRow])
+	return res, q.errWrap(err)
 }
 
 const compositeUserOneSQL = `SELECT ROW (15, 'qux')::"user" AS "user";`
 
 // CompositeUserOne implements Querier.CompositeUserOne.
 func (q *DBQuerier) CompositeUserOne(ctx context.Context) (User, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return User{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOne")
 	rows, err := q.conn.Query(ctx, compositeUserOneSQL)
 	if err != nil {
-		return User{}, fmt.Errorf("query CompositeUserOne: %w", err)
+		return User{}, fmt.Errorf("query CompositeUserOne: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[User])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[User])
+	return res, q.errWrap(err)
 }
 
 const compositeUserOneTwoColsSQL = `SELECT 1 AS num, ROW (15, 'qux')::"user" AS "user";`
@@ -139,26 +194,36 @@ type CompositeUserOneTwoColsRow struct {
 
 // CompositeUserOneTwoCols implements Querier.CompositeUserOneTwoCols.
 func (q *DBQuerier) CompositeUserOneTwoCols(ctx context.Context) (CompositeUserOneTwoColsRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return CompositeUserOneTwoColsRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOneTwoCols")
 	rows, err := q.conn.Query(ctx, compositeUserOneTwoColsSQL)
 	if err != nil {
-		return CompositeUserOneTwoColsRow{}, fmt.Errorf("query CompositeUserOneTwoCols: %w", err)
+		return CompositeUserOneTwoColsRow{}, fmt.Errorf("query CompositeUserOneTwoCols: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CompositeUserOneTwoColsRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CompositeUserOneTwoColsRow])
+	return res, q.errWrap(err)
 }
 
 const compositeUserManySQL = `SELECT ROW (15, 'qux')::"user" AS "user";`
 
 // CompositeUserMany implements Querier.CompositeUserMany.
 func (q *DBQuerier) CompositeUserMany(ctx context.Context) ([]User, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserMany")
 	rows, err := q.conn.Query(ctx, compositeUserManySQL)
 	if err != nil {
-		return nil, fmt.Errorf("query CompositeUserMany: %w", err)
+		return nil, fmt.Errorf("query CompositeUserMany: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[User])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[User])
+	return res, q.errWrap(err)
 }
 
 const insertUserSQL = `INSERT INTO "user" (id, name)
@@ -166,78 +231,33 @@ VALUES ($1, $2);`
 
 // InsertUser implements Querier.InsertUser.
 func (q *DBQuerier) InsertUser(ctx context.Context, userID int, name string) (pgconn.CommandTag, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "InsertUser")
 	cmdTag, err := q.conn.Exec(ctx, insertUserSQL, userID, name)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertUser: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertUser: %w", q.errWrap(err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 }
 
 const insertDeviceSQL = `INSERT INTO device (mac, owner)
 VALUES ($1, $2);`
 
 // InsertDevice implements Querier.InsertDevice.
-func (q *DBQuerier) InsertDevice(ctx context.Context, mac pgtype.Macaddr, owner int) (pgconn.CommandTag, error) {
+func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, owner int) (pgconn.CommandTag, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, owner)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", err)
+		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", q.errWrap(err))
 	}
-	return cmdTag, err
-}
-
-type scanCacheKey struct {
-	oid      uint32
-	format   int16
-	typeName string
-}
-
-var (
-	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
-	plansMu sync.RWMutex
-)
-
-func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return plan
-}
-
-type ptrScanner[T any] struct {
-	basePlan pgtype.ScanPlan
-}
-
-func (s ptrScanner[T]) Scan(src []byte, dst any) error {
-	if src == nil {
-		return nil
-	}
-	d := dst.(**T)
-	*d = new(T)
-	return s.basePlan.Scan(src, *d)
-}
-
-func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	basePlan := planScan(codec, fd, target)
-	ptrPlan := ptrScanner[T]{basePlan}
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return ptrPlan
+	return cmdTag, q.errWrap(err)
 }

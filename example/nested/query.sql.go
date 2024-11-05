@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -24,7 +25,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -32,11 +34,18 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // Dimensions represents the Postgres composite type "dimensions".
@@ -58,6 +67,42 @@ type ProductImageType struct {
 	Dimensions Dimensions `json:"dimensions"`
 }
 
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
+		}
+	})
+
+	return registerErr
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}
+
+var _ = addTypeToRegister("public.dimensions")
+
+var _ = addTypeToRegister("public.product_image_set_type")
+
+var _ = addTypeToRegister("public.product_image_type")
+
+var _ = addTypeToRegister("public._product_image_type")
+
 const arrayNested2SQL = `SELECT
   ARRAY [
     ROW ('img2', ROW (22, 22)::dimensions)::product_image_type,
@@ -66,13 +111,18 @@ const arrayNested2SQL = `SELECT
 
 // ArrayNested2 implements Querier.ArrayNested2.
 func (q *DBQuerier) ArrayNested2(ctx context.Context) ([]ProductImageType, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "ArrayNested2")
 	rows, err := q.conn.Query(ctx, arrayNested2SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query ArrayNested2: %w", err)
+		return nil, fmt.Errorf("query ArrayNested2: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
+	return res, q.errWrap(err)
 }
 
 const nested3SQL = `SELECT
@@ -87,66 +137,16 @@ const nested3SQL = `SELECT
 
 // Nested3 implements Querier.Nested3.
 func (q *DBQuerier) Nested3(ctx context.Context) ([]ProductImageSetType, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "Nested3")
 	rows, err := q.conn.Query(ctx, nested3SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query Nested3: %w", err)
+		return nil, fmt.Errorf("query Nested3: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[ProductImageSetType])
-}
-
-type scanCacheKey struct {
-	oid      uint32
-	format   int16
-	typeName string
-}
-
-var (
-	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
-	plansMu sync.RWMutex
-)
-
-func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return plan
-}
-
-type ptrScanner[T any] struct {
-	basePlan pgtype.ScanPlan
-}
-
-func (s ptrScanner[T]) Scan(src []byte, dst any) error {
-	if src == nil {
-		return nil
-	}
-	d := dst.(**T)
-	*d = new(T)
-	return s.basePlan.Scan(src, *d)
-}
-
-func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	basePlan := planScan(codec, fd, target)
-	ptrPlan := ptrScanner[T]{basePlan}
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return ptrPlan
+	res, err := pgx.CollectRows(rows, pgx.RowTo[ProductImageSetType])
+	return res, q.errWrap(err)
 }

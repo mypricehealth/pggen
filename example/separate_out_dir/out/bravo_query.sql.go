@@ -13,11 +13,16 @@ const bravoSQL = `SELECT 'bravo' as output;`
 
 // Bravo implements Querier.Bravo.
 func (q *DBQuerier) Bravo(ctx context.Context) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "Bravo")
 	rows, err := q.conn.Query(ctx, bravoSQL)
 	if err != nil {
-		return "", fmt.Errorf("query Bravo: %w", err)
+		return "", fmt.Errorf("query Bravo: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	return res, q.errWrap(err)
 }

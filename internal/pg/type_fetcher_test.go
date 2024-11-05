@@ -2,13 +2,14 @@ package pg
 
 import (
 	"context"
+	"sort"
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/mypricehealth/pggen/internal/pg/pgoid"
 	"github.com/mypricehealth/pggen/internal/pgtest"
 	"github.com/mypricehealth/pggen/internal/texts"
-	"sort"
-	"testing"
 )
 
 func TestNewTypeFetcher(t *testing.T) {

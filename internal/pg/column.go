@@ -3,12 +3,13 @@ package pg
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/mypricehealth/pggen/internal/texts"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/mypricehealth/pggen/internal/texts"
 )
 
 // Column stores information about a column in a TableOID.

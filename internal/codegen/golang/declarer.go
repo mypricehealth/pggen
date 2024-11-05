@@ -49,9 +49,28 @@ func FindInputDeclarers(typ gotype.Type) DeclarerSet {
 	decls := NewDeclarerSet()
 	// Only top level types need the init declarer. Descendant types need the
 	// raw declarer.
-	// findInputDeclsHelper(typ, decls)
+	switch typ := gotype.UnwrapNestedType(typ).(type) {
+	case *gotype.CompositeType:
+		decls.AddAll(
+			NewTypeResolverDeclarer(),
+			NewCompositeInitDeclarer(typ),
+		)
+	case *gotype.ArrayType:
+		if gotype.IsPgxSupportedArray(typ) {
+			break
+		}
+		switch gotype.UnwrapNestedType(typ.Elem).(type) {
+		case *gotype.CompositeType, *gotype.EnumType:
+			decls.AddAll(
+				NewTypeResolverDeclarer(),
+				NewArrayInitDeclarer(typ),
+			)
+		}
+	}
+	decls.AddAll(NewTypeResolverInitDeclarer()) // always add
+	findInputDeclsHelper(typ, decls)
 	// Inputs depend on output transcoders.
-	// findOutputDeclsHelper(typ, decls /*hadCompositeParent*/, false)
+	findOutputDeclsHelper(typ, decls /*hadCompositeParent*/, false)
 	return decls
 }
 
@@ -83,6 +102,7 @@ func findInputDeclsHelper(typ gotype.Type, decls DeclarerSet) {
 // the output rows. Returns nil if no declarers are needed.
 func FindOutputDeclarers(typ gotype.Type) DeclarerSet {
 	decls := NewDeclarerSet()
+	decls.AddAll(NewTypeResolverInitDeclarer()) // always add
 	findOutputDeclsHelper(typ, decls, false)
 	return decls
 }
@@ -102,12 +122,22 @@ func findOutputDeclsHelper(typ gotype.Type, decls DeclarerSet, hadCompositeParen
 	case *gotype.CompositeType:
 		decls.AddAll(
 			NewCompositeTypeDeclarer(typ),
+			NewCompositeTranscoderDeclarer(typ),
+			NewTypeResolverDeclarer(),
 		)
 		for _, childType := range typ.FieldTypes {
 			findOutputDeclsHelper(childType, decls, true)
 		}
 
 	case *gotype.ArrayType:
+		if gotype.IsPgxSupportedArray(typ) {
+			return
+		}
+		decls.AddAll(NewTypeResolverDeclarer())
+		switch gotype.UnwrapNestedType(typ.Elem).(type) {
+		case *gotype.CompositeType, *gotype.EnumType:
+			decls.AddAll(NewArrayDecoderDeclarer(typ))
+		}
 		findOutputDeclsHelper(typ.Elem, decls, hadCompositeParent)
 
 	default:
@@ -128,7 +158,35 @@ func NewConstantDeclarer(key, str string) ConstantDeclarer {
 func (c ConstantDeclarer) DedupeKey() string              { return c.key }
 func (c ConstantDeclarer) Declare(string) (string, error) { return c.str, nil }
 
-const typeResolverInitDecl = `// typeResolver looks up the pgtype.ValueTranscoder by Postgres type name.
+const typeResolverInitDecl = `var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
+		}
+	})
+
+	return registerErr
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}`
+
+const typeResolverInitDecl2 = `// typeResolver looks up the pgtype.ValueTranscoder by Postgres type name.
 type typeResolver struct {
 	connInfo *pgtype.ConnInfo // types by Postgres type name
 }
@@ -162,7 +220,9 @@ func NewTypeResolverInitDeclarer() ConstantDeclarer {
 	return NewConstantDeclarer("type_resolver::00_common", typeResolverInitDecl)
 }
 
-const typeResolverBodyDecl = `type compositeField struct {
+const typeResolverBodyDecl = ``
+
+const typeResolverBodyDecl2 = `type compositeField struct {
 	name       string                 // name of the field
 	typeName   string                 // Postgres type name
 	defaultVal pgtype.ValueTranscoder // default value to use

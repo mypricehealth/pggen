@@ -1,6 +1,8 @@
 package ast
 
-import gotok "go/token"
+import (
+	gotok "go/token"
+)
 
 // Node is the super-type of all AST nodes.
 type Node interface {
@@ -91,15 +93,16 @@ type (
 
 	// An SourceQuery node represents a query entry from the source code.
 	SourceQuery struct {
-		Name        string        // name of the query
-		Doc         *CommentGroup // associated documentation; or nil
-		Start       gotok.Pos     // position of the start token, like 'SELECT' or 'UPDATE'
-		SourceSQL   string        // the complete sql query as it appeared in the source file
-		PreparedSQL string        // the sql query with args replaced by $1, $2, etc.
-		Params      []Param       // the name of each param in the PreparedSQL, the nth entry is the $n+1 param
-		ResultKind  ResultKind    // the result output type
-		Pragmas     Pragmas       // optional query options
-		Semi        gotok.Pos     // position of the closing semicolon
+		Name              string              // name of the query
+		Doc               *CommentGroup       // associated documentation; or nil
+		Start             gotok.Pos           // position of the start token, like 'SELECT' or 'UPDATE'
+		SourceSQL         []string            // the complete sql query as it appeared in the source file
+		ContiguousArgsSQL []ContiguousArgsSQL // a list of sql queries with args replaced by dense placeholders with a mapping to the real placeholders. Useful for `Prepare`.
+		PreparedSQL       string              // The prepared sql to be executed.
+		Params            []Param             // the name of each param in the PreparedSQL, the nth entry is the $n+1 param
+		ResultKind        ResultKind          // the result output type
+		Pragmas           Pragmas             // optional query options
+		EndPos            gotok.Pos           // position of the closing semicolon
 	}
 
 	Param struct {
@@ -108,13 +111,24 @@ type (
 	}
 )
 
+type ContiguousArgsSQL struct {
+	// This is the SQL with the args replaced by dense placeholders.
+	SQL string
+
+	// To successfully `Prepare` a SQL statement the arguments must be sequential, starting with `$1`.
+	// This maps it back to the original args.
+	Args []int
+
+	UniqueArgs int
+}
+
 func (q *BadQuery) Pos() gotok.Pos { return q.From }
 func (q *BadQuery) End() gotok.Pos { return q.To }
 func (q *BadQuery) Kind() NodeKind { return KindBadQuery }
 func (*BadQuery) queryNode()       {}
 
 func (q *SourceQuery) Pos() gotok.Pos { return q.Start }
-func (q *SourceQuery) End() gotok.Pos { return q.Semi }
+func (q *SourceQuery) End() gotok.Pos { return q.EndPos }
 func (q *SourceQuery) Kind() NodeKind { return KindTemplateQuery }
 func (*SourceQuery) queryNode()       {}
 

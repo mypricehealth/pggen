@@ -3,6 +3,8 @@ package pginfer
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,7 +30,8 @@ type TypedQuery struct {
 	Doc []string
 	// The SQL query, with pggen functions replaced with Postgres syntax. Ready
 	// to run on Postgres with the PREPARE statement.
-	PreparedSQL string
+	ContiguousArgsSQL []ast.ContiguousArgsSQL
+	PreparedSQL       string
 	// The input parameters to the query.
 	Inputs []InputParam
 	// The output columns of the query.
@@ -46,6 +49,10 @@ type InputParam struct {
 	PgType pg.Type
 	// Whether the input parameter is optional
 	IsOptional bool
+}
+
+func (p InputParam) IsEmpty() bool {
+	return p.PgName == "" && p.PgType == nil && !p.IsOptional
 }
 
 // OutputColumn is a single column output from a select query or returning
@@ -75,11 +82,11 @@ func NewInferrer(conn *pgx.Conn) *Inferrer {
 	}
 }
 
-func (inf *Inferrer) RunSetup(query string) (pgconn.CommandTag, error) {
+func (inf *Inferrer) RunSetup(sql string) (pgconn.CommandTag, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	return inf.conn.Exec(ctx, query)
+	return inf.conn.Exec(ctx, sql)
 }
 
 func (inf *Inferrer) InferTypes(query *ast.SourceQuery) (TypedQuery, error) {
@@ -91,25 +98,26 @@ func (inf *Inferrer) InferTypes(query *ast.SourceQuery) (TypedQuery, error) {
 		if len(outputs) == 0 {
 			return TypedQuery{}, fmt.Errorf(
 				"query %s has incompatible result kind %s; the query doesn't return any columns; "+
-					"use :exec if query shouldn't return any columns",
+					"use :exec or :setup if the query shouldn't return any columns",
 				query.Name, query.ResultKind)
 		}
 		if countVoids(outputs) == len(outputs) {
 			return TypedQuery{}, fmt.Errorf(
 				"query %s has incompatible result kind %s; the query only has void columns; "+
-					"use :exec if query shouldn't return any columns",
+					"use :exec or :setup if the query shouldn't return any columns",
 				query.Name, query.ResultKind)
 		}
 	}
 	doc := extractDoc(query)
 	return TypedQuery{
-		Name:         query.Name,
-		ResultKind:   query.ResultKind,
-		Doc:          doc,
-		PreparedSQL:  query.PreparedSQL,
-		Inputs:       inputs,
-		Outputs:      outputs,
-		ProtobufType: query.Pragmas.ProtobufType,
+		Name:              query.Name,
+		ResultKind:        query.ResultKind,
+		Doc:               doc,
+		ContiguousArgsSQL: query.ContiguousArgsSQL,
+		PreparedSQL:       query.PreparedSQL,
+		Inputs:            inputs,
+		Outputs:           outputs,
+		ProtobufType:      query.Pragmas.ProtobufType,
 	}, nil
 }
 
@@ -118,9 +126,102 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
+	// The final statement description is used for the output, if any.
+	statements := make([]*pgconn.StatementDescription, 0, len(query.ContiguousArgsSQL))
+
+	tx, err := inf.conn.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, nil, fmt.Errorf("begin transaction failure: %w", err)
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+
+	for i, sql := range query.ContiguousArgsSQL {
+		stmtDesc, err := inf.prepareQuery(ctx, sql.SQL, query.ResultKind)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to prepare query: %w", err)
+		}
+
+		if len(stmtDesc.ParamOIDs) != sql.UniqueArgs {
+			fundamentalError := fmt.Errorf("%d unique args are written in the query but got oids for %d", sql.UniqueArgs, len(stmtDesc.ParamOIDs))
+			if len(stmtDesc.ParamOIDs) < sql.UniqueArgs {
+				return nil, nil, fmt.Errorf("%s, this likely indicates that an argument can be parsed but not bound, for example `CREATE VIEW pggen.arg('view_name') AS (SELECT 1)` would result in this error", fundamentalError)
+			}
+
+			return nil, nil, fmt.Errorf("%s, this either indicates a bug or a positional parameter being used directly in a query instead of `pggen.arg('arg_name')`", fundamentalError)
+		}
+
+		statements = append(statements, stmtDesc)
+
+		// If this is the last statement, there's no need to actually execute it.
+		if i == len(query.ContiguousArgsSQL)-1 {
+			continue
+		}
+
+		// Execute the query so that side effects that the next query may depend on are applied.
+		paramValues := make([][]byte, len(sql.Args))
+		paramFormats := make([]int16, len(sql.Args))
+		for i := range len(sql.Args) {
+			paramValues[i] = nil
+		}
+
+		rr := inf.conn.PgConn().ExecPrepared(ctx, stmtDesc.Name, paramValues, paramFormats, nil)
+		_, err = rr.Close()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to execute prepared query: %w", err)
+		}
+	}
+
+	inputParams, err := inf.getInputParamTypes(statements, query)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get inputs: %w", err)
+	}
+
+	if len(inputParams) != len(query.Params) {
+		return nil, nil, fmt.Errorf("expected %d parameter types for query; got %d", len(query.Params), len(inputParams))
+	}
+
+	var outputColumns []OutputColumn
+	if len(statements) > 0 {
+		// The output is based upon the final statement.
+		finalStatement := statements[len(statements)-1]
+
+		// Resolve type names of output column data type OIDs.
+		outputOIDs := make([]uint32, len(finalStatement.Fields))
+		for i, desc := range finalStatement.Fields {
+			outputOIDs[i] = desc.DataTypeOID
+		}
+		outputTypes, err := inf.typeFetcher.FindTypesByOIDs(outputOIDs...)
+		if err != nil {
+			return nil, nil, fmt.Errorf("fetch oid types: %w", err)
+		}
+
+		// Output nullability.
+		nullables, err := inf.inferOutputNullability(query, finalStatement.Fields)
+		if err != nil {
+			return nil, nil, fmt.Errorf("infer output type nullability: %w", err)
+		}
+
+		// Create output columns
+		for i, desc := range finalStatement.Fields {
+			pgType, ok := outputTypes[uint32(desc.DataTypeOID)]
+			if !ok {
+				return nil, nil, fmt.Errorf("no postgrestype name found for column %s with oid %d", string(desc.Name), desc.DataTypeOID)
+			}
+			outputColumns = append(outputColumns, OutputColumn{
+				PgName:   string(desc.Name),
+				PgType:   pgType,
+				Nullable: nullables[i],
+			})
+		}
+	}
+
+	return inputParams, outputColumns, nil
+}
+
+func (inf *Inferrer) prepareQuery(ctx context.Context, sql string, resultKind ast.ResultKind) (*pgconn.StatementDescription, error) {
 	// If paramOIDs is null, Postgres infers the type for each parameter.
 	var paramOIDs []uint32
-	stmtDesc, err := inf.conn.PgConn().Prepare(ctx, "", query.PreparedSQL, paramOIDs)
+	stmtDesc, err := inf.conn.PgConn().Prepare(ctx, "", sql, paramOIDs)
 	if err != nil {
 		if pgErr, ok := err.(*pgconn.PgError); ok {
 			msg := "fetch field descriptions: " + pgErr.Message
@@ -143,75 +244,117 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 			// only if there's output columns. If the user has an UPDATE or INSERT
 			// without a RETURNING clause, pggen will surface the null constraint
 			// errors because len(descriptions) == 0.
-			if strings.Contains(strings.ToLower(query.PreparedSQL), "update") ||
-				strings.Contains(strings.ToLower(query.PreparedSQL), "insert") {
+			if strings.Contains(strings.ToLower(sql), "update") ||
+				strings.Contains(strings.ToLower(sql), "insert") {
 				msg += "\n    HINT: if the main statement is an UPDATE or INSERT ensure that you have"
-				msg += "\n          a RETURNING clause (this query is marked " + string(query.ResultKind) + ")."
+				msg += "\n          a RETURNING clause (this query is marked " + string(resultKind) + ")."
 				msg += "\n          Use :exec if you don't need the query output."
 			}
-			return nil, nil, fmt.Errorf(msg+"\n    %w", pgErr)
+			return nil, fmt.Errorf(msg+"\n    %w", pgErr)
 		}
-		return nil, nil, fmt.Errorf("prepare query to infer types: %w", err)
+		return nil, fmt.Errorf("prepare query to infer types: %w", err)
 	}
 
-	// Validate.
-	if len(stmtDesc.ParamOIDs) != len(query.Params) {
-		return nil, nil, fmt.Errorf("expected %d parameter types for query; got %d", len(query.Params), len(stmtDesc.ParamOIDs))
+	return stmtDesc, nil
+}
+
+func (inf *Inferrer) getInputParamTypes(statements []*pgconn.StatementDescription, query *ast.SourceQuery) ([]InputParam, error) {
+	var oids []uint32
+	oidToParamIndex := make(map[uint32][]int)
+
+	setParams := make([]bool, len(query.Params))
+
+	if len(statements) != len(query.ContiguousArgsSQL) {
+		return nil, fmt.Errorf("expected %d statement descriptions; got %d", len(query.ContiguousArgsSQL), len(statements))
 	}
 
-	// Build input params.
-	var inputParams []InputParam
-	if len(stmtDesc.ParamOIDs) > 0 {
-		types, err := inf.typeFetcher.FindTypesByOIDs(stmtDesc.ParamOIDs...)
-		if err != nil {
-			return nil, nil, fmt.Errorf("fetch oid types: %w", err)
-		}
-		for i, oid := range stmtDesc.ParamOIDs {
-			param := query.Params[i]
+	for i, statement := range statements {
+		contiguousArgs := query.ContiguousArgsSQL[i]
 
-			inputType, ok := types[uint32(oid)]
-			if !ok {
-				return nil, nil, fmt.Errorf("no postgres type name found for parameter %s with oid %d", param.Name, oid)
+		if len(statement.ParamOIDs) != contiguousArgs.UniqueArgs {
+			return nil, fmt.Errorf("expected %d parameter oids; got %d", contiguousArgs.UniqueArgs, len(statement.ParamOIDs))
+		}
+
+		// To be analyzed, the parameters are required to be dense, i.e. `$1`, `$2`, `$3` etc.
+		// However across multiple statements an individual statement might only have say `$4` and `$2`.
+		for j, oid := range statement.ParamOIDs {
+			if _, ok := oidToParamIndex[oid]; !ok {
+				oids = append(oids, oid)
 			}
 
-			inputParams = append(inputParams, InputParam{
-				PgName:     param.Name,
-				PgType:     inputType,
-				IsOptional: param.IsOptional,
-			})
+			paramIndex := contiguousArgs.Args[j]
+			indexes := oidToParamIndex[oid]
+
+			// This slice should be small enough that a linear search is fine (and even faster than a set).
+			// A query with 100 parameters is already quite large.
+			if !slices.Contains(indexes, paramIndex) {
+				oidToParamIndex[oid] = append(indexes, paramIndex)
+
+				if paramIndex >= len(setParams) {
+					return nil, fmt.Errorf("has input params count %d but got parameter index %d", len(setParams), paramIndex)
+				}
+
+				setParams[paramIndex] = true
+			}
 		}
 	}
 
-	// Resolve type names of output column data type OIDs.
-	outputOIDs := make([]uint32, len(stmtDesc.Fields))
-	for i, desc := range stmtDesc.Fields {
-		outputOIDs[i] = desc.DataTypeOID
-	}
-	outputTypes, err := inf.typeFetcher.FindTypesByOIDs(outputOIDs...)
-	if err != nil {
-		return nil, nil, fmt.Errorf("fetch oid types: %w", err)
-	}
-
-	// Output nullability.
-	nullables, err := inf.inferOutputNullability(query, stmtDesc.Fields)
-	if err != nil {
-		return nil, nil, fmt.Errorf("infer output type nullability: %w", err)
-	}
-
-	// Create output columns
-	var outputColumns []OutputColumn
-	for i, desc := range stmtDesc.Fields {
-		pgType, ok := outputTypes[uint32(desc.DataTypeOID)]
-		if !ok {
-			return nil, nil, fmt.Errorf("no postgrestype name found for column %s with oid %d", string(desc.Name), desc.DataTypeOID)
+	unsetParams := &strings.Builder{}
+	for i, set := range setParams {
+		if !set {
+			if len(unsetParams.String()) > 0 {
+				unsetParams.WriteString(", ")
+			}
+			unsetParams.WriteString(strconv.Itoa(i))
 		}
-		outputColumns = append(outputColumns, OutputColumn{
-			PgName:   string(desc.Name),
-			PgType:   pgType,
-			Nullable: nullables[i],
-		})
 	}
-	return inputParams, outputColumns, nil
+
+	if unsetParams.Len() > 0 {
+		return nil, fmt.Errorf("cannot find oids for parameters at index %s", unsetParams.String())
+	}
+
+	paramTypes := make([]InputParam, len(setParams))
+	if len(oids) > 0 {
+		types, err := inf.typeFetcher.FindTypesByOIDs(oids...)
+		if err != nil {
+			return nil, fmt.Errorf("fetch oid types: %w", err)
+		}
+
+		for _, oid := range oids {
+			paramIndexes := oidToParamIndex[oid]
+			for _, paramIndex := range paramIndexes {
+				param := query.Params[paramIndex]
+
+				inputType, ok := types[oid]
+				if !ok {
+					return nil, fmt.Errorf("no postgres type name found for parameter %s with oid %d", param.Name, oid)
+				}
+
+				oldParam := paramTypes[paramIndex]
+
+				newParam := InputParam{
+					PgName:     param.Name,
+					PgType:     inputType,
+					IsOptional: param.IsOptional,
+				}
+				paramTypes[paramIndex] = newParam
+
+				if oldParam.IsEmpty() {
+					continue
+				}
+
+				currentOID := newParam.PgType.OID()
+				oldOID := oldParam.PgType.OID()
+				if newParam.PgName != oldParam.PgName || currentOID != oldOID {
+					return nil, fmt.Errorf("parameter %s has conflicting types: %s (OID %d) and %s (OID %d), note that this analysis may be overly pessimistic", param.Name, newParam.PgType, currentOID, oldParam.PgType, oldOID)
+				}
+
+				paramTypes[paramIndex].IsOptional = oldParam.IsOptional && newParam.IsOptional
+			}
+		}
+	}
+
+	return paramTypes, nil
 }
 
 // inferOutputNullability infers which of the output columns produced by the
@@ -257,9 +400,9 @@ func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgco
 	return nullables, nil
 }
 
-func createParamArgs(query *ast.SourceQuery) []interface{} {
-	args := make([]interface{}, len(query.Params))
-	for i := range query.Params {
+func createParamArgs(argCount int) []interface{} {
+	args := make([]interface{}, argCount)
+	for i := range argCount {
 		args[i] = nil
 	}
 	return args

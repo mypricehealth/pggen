@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -32,7 +33,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -40,11 +42,46 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
+}
+
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
+		}
+	})
+
+	return registerErr
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
 }
 
 const genSeries1SQL = `SELECT n
@@ -53,13 +90,18 @@ LIMIT 1;`
 
 // GenSeries1 implements Querier.GenSeries1.
 func (q *DBQuerier) GenSeries1(ctx context.Context) (*int, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeries1")
 	rows, err := q.conn.Query(ctx, genSeries1SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeries1: %w", err)
+		return nil, fmt.Errorf("query GenSeries1: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
+	return res, q.errWrap(err)
 }
 
 const genSeriesSQL = `SELECT n
@@ -67,13 +109,18 @@ FROM generate_series(0, 2) n;`
 
 // GenSeries implements Querier.GenSeries.
 func (q *DBQuerier) GenSeries(ctx context.Context) ([]*int, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeries")
 	rows, err := q.conn.Query(ctx, genSeriesSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeries: %w", err)
+		return nil, fmt.Errorf("query GenSeries: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[*int])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[*int])
+	return res, q.errWrap(err)
 }
 
 const genSeriesArr1SQL = `SELECT array_agg(n)
@@ -81,13 +128,18 @@ FROM generate_series(0, 2) n;`
 
 // GenSeriesArr1 implements Querier.GenSeriesArr1.
 func (q *DBQuerier) GenSeriesArr1(ctx context.Context) ([]int, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr1")
 	rows, err := q.conn.Query(ctx, genSeriesArr1SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeriesArr1: %w", err)
+		return nil, fmt.Errorf("query GenSeriesArr1: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
+	return res, q.errWrap(err)
 }
 
 const genSeriesArrSQL = `SELECT array_agg(n)
@@ -95,13 +147,18 @@ FROM generate_series(0, 2) n;`
 
 // GenSeriesArr implements Querier.GenSeriesArr.
 func (q *DBQuerier) GenSeriesArr(ctx context.Context) ([][]int, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr")
 	rows, err := q.conn.Query(ctx, genSeriesArrSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeriesArr: %w", err)
+		return nil, fmt.Errorf("query GenSeriesArr: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[[]int])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[[]int])
+	return res, q.errWrap(err)
 }
 
 const genSeriesStr1SQL = `SELECT n::text
@@ -110,13 +167,18 @@ LIMIT 1;`
 
 // GenSeriesStr1 implements Querier.GenSeriesStr1.
 func (q *DBQuerier) GenSeriesStr1(ctx context.Context) (*string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr1")
 	rows, err := q.conn.Query(ctx, genSeriesStr1SQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeriesStr1: %w", err)
+		return nil, fmt.Errorf("query GenSeriesStr1: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
+	return res, q.errWrap(err)
 }
 
 const genSeriesStrSQL = `SELECT n::text
@@ -124,66 +186,16 @@ FROM generate_series(0, 2) n;`
 
 // GenSeriesStr implements Querier.GenSeriesStr.
 func (q *DBQuerier) GenSeriesStr(ctx context.Context) ([]*string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr")
 	rows, err := q.conn.Query(ctx, genSeriesStrSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query GenSeriesStr: %w", err)
+		return nil, fmt.Errorf("query GenSeriesStr: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[*string])
-}
-
-type scanCacheKey struct {
-	oid      uint32
-	format   int16
-	typeName string
-}
-
-var (
-	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
-	plansMu sync.RWMutex
-)
-
-func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return plan
-}
-
-type ptrScanner[T any] struct {
-	basePlan pgtype.ScanPlan
-}
-
-func (s ptrScanner[T]) Scan(src []byte, dst any) error {
-	if src == nil {
-		return nil
-	}
-	d := dst.(**T)
-	*d = new(T)
-	return s.basePlan.Scan(src, *d)
-}
-
-func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	basePlan := planScan(codec, fd, target)
-	ptrPlan := ptrScanner[T]{basePlan}
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return ptrPlan
+	res, err := pgx.CollectRows(rows, pgx.RowTo[*string])
+	return res, q.errWrap(err)
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -30,7 +31,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -38,11 +40,18 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 // Arrays represents the Postgres composite type "arrays".
@@ -65,6 +74,42 @@ type UserEmail struct {
 	ID    string      `json:"id"`
 	Email pgtype.Text `json:"email"`
 }
+
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
+		}
+	})
+
+	return registerErr
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
+}
+
+var _ = addTypeToRegister("public.arrays")
+
+var _ = addTypeToRegister("public.blocks")
+
+var _ = addTypeToRegister("public.user_email")
+
+var _ = addTypeToRegister("public._blocks")
 
 const searchScreenshotsSQL = `SELECT
   ss.id,
@@ -89,13 +134,18 @@ type SearchScreenshotsRow struct {
 
 // SearchScreenshots implements Querier.SearchScreenshots.
 func (q *DBQuerier) SearchScreenshots(ctx context.Context, params SearchScreenshotsParams) ([]SearchScreenshotsRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "SearchScreenshots")
 	rows, err := q.conn.Query(ctx, searchScreenshotsSQL, params.Body, params.Limit, params.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("query SearchScreenshots: %w", err)
+		return nil, fmt.Errorf("query SearchScreenshots: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[SearchScreenshotsRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[SearchScreenshotsRow])
+	return res, q.errWrap(err)
 }
 
 const searchScreenshotsOneColSQL = `SELECT
@@ -115,13 +165,18 @@ type SearchScreenshotsOneColParams struct {
 
 // SearchScreenshotsOneCol implements Querier.SearchScreenshotsOneCol.
 func (q *DBQuerier) SearchScreenshotsOneCol(ctx context.Context, params SearchScreenshotsOneColParams) ([][]Blocks, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "SearchScreenshotsOneCol")
 	rows, err := q.conn.Query(ctx, searchScreenshotsOneColSQL, params.Body, params.Limit, params.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("query SearchScreenshotsOneCol: %w", err)
+		return nil, fmt.Errorf("query SearchScreenshotsOneCol: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[[]Blocks])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[[]Blocks])
+	return res, q.errWrap(err)
 }
 
 const insertScreenshotBlocksSQL = `WITH screens AS (
@@ -141,92 +196,52 @@ type InsertScreenshotBlocksRow struct {
 
 // InsertScreenshotBlocks implements Querier.InsertScreenshotBlocks.
 func (q *DBQuerier) InsertScreenshotBlocks(ctx context.Context, screenshotID int, body string) (InsertScreenshotBlocksRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return InsertScreenshotBlocksRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "InsertScreenshotBlocks")
 	rows, err := q.conn.Query(ctx, insertScreenshotBlocksSQL, screenshotID, body)
 	if err != nil {
-		return InsertScreenshotBlocksRow{}, fmt.Errorf("query InsertScreenshotBlocks: %w", err)
+		return InsertScreenshotBlocksRow{}, fmt.Errorf("query InsertScreenshotBlocks: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertScreenshotBlocksRow])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertScreenshotBlocksRow])
+	return res, q.errWrap(err)
 }
 
 const arraysInputSQL = `SELECT $1::arrays;`
 
 // ArraysInput implements Querier.ArraysInput.
 func (q *DBQuerier) ArraysInput(ctx context.Context, arrays Arrays) (Arrays, error) {
-	ctx = context.WithValue(ctx, QueryName{}, "ArraysInput")
-	rows, err := q.conn.Query(ctx, arraysInputSQL, q.types.newArraysInit(arrays))
+	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return Arrays{}, fmt.Errorf("query ArraysInput: %w", err)
+		return Arrays{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
 	}
 
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[Arrays])
+	ctx = context.WithValue(ctx, QueryName{}, "ArraysInput")
+	rows, err := q.conn.Query(ctx, arraysInputSQL, arrays)
+	if err != nil {
+		return Arrays{}, fmt.Errorf("query ArraysInput: %w", q.errWrap(err))
+	}
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[Arrays])
+	return res, q.errWrap(err)
 }
 
 const userEmailsSQL = `SELECT ('foo', 'bar@example.com')::user_email;`
 
 // UserEmails implements Querier.UserEmails.
 func (q *DBQuerier) UserEmails(ctx context.Context) (UserEmail, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return UserEmail{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "UserEmails")
 	rows, err := q.conn.Query(ctx, userEmailsSQL)
 	if err != nil {
-		return UserEmail{}, fmt.Errorf("query UserEmails: %w", err)
+		return UserEmail{}, fmt.Errorf("query UserEmails: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[UserEmail])
-}
-
-type scanCacheKey struct {
-	oid      uint32
-	format   int16
-	typeName string
-}
-
-var (
-	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
-	plansMu sync.RWMutex
-)
-
-func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return plan
-}
-
-type ptrScanner[T any] struct {
-	basePlan pgtype.ScanPlan
-}
-
-func (s ptrScanner[T]) Scan(src []byte, dst any) error {
-	if src == nil {
-		return nil
-	}
-	d := dst.(**T)
-	*d = new(T)
-	return s.basePlan.Scan(src, *d)
-}
-
-func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	basePlan := planScan(codec, fd, target)
-	ptrPlan := ptrScanner[T]{basePlan}
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return ptrPlan
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[UserEmail])
+	return res, q.errWrap(err)
 }

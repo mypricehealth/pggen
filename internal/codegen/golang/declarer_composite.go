@@ -126,6 +126,13 @@ func (c CompositeTranscoderDeclarer) Declare(pkgPath string) (string, error) {
 	sb := &strings.Builder{}
 	sb.Grow(256)
 
+	sb.WriteString("var _ = addTypeToRegister(\"")
+	sb.WriteString(c.typ.PgComposite.Schema)
+	sb.WriteString(".")
+	sb.WriteString(c.typ.PgComposite.Name)
+	sb.WriteString("\")\n")
+	return sb.String(), nil
+
 	// Doc comment
 	sb.WriteString("// ")
 	sb.WriteString(funcName)
@@ -231,6 +238,8 @@ func (c CompositeInitDeclarer) DedupeKey() string {
 }
 
 func (c CompositeInitDeclarer) Declare(string) (string, error) {
+	return "", nil
+
 	funcName := NameCompositeInitFunc(c.typ)
 	sb := &strings.Builder{}
 	sb.Grow(256)
@@ -279,6 +288,8 @@ func (c CompositeRawDeclarer) DedupeKey() string {
 }
 
 func (c CompositeRawDeclarer) Declare(string) (string, error) {
+	return "", nil
+
 	funcName := NameCompositeRawFunc(c.typ)
 	sb := &strings.Builder{}
 	sb.Grow(256)

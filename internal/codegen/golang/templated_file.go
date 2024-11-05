@@ -148,6 +148,10 @@ func getLongestInput(inputs []TemplatedParam) (int, int) {
 	return nameLen, typeLen
 }
 
+func (tq TemplatedQuery) Executable() bool {
+	return tq.ResultKind == ast.ResultKindExec || tq.ResultKind == ast.ResultKindSetup
+}
+
 // EmitParamStruct emits the struct definition for query params if needed.
 func (tq TemplatedQuery) EmitParamStruct() string {
 	if tq.isInlineParams() {
@@ -182,11 +186,7 @@ func (tq TemplatedQuery) EmitParamNames() string {
 	appendParam := func(sb *strings.Builder, typ gotype.Type, name string) {
 		switch typ := gotype.UnwrapNestedType(typ).(type) {
 		case *gotype.CompositeType:
-			sb.WriteString("q.types.")
-			sb.WriteString(NameCompositeInitFunc(typ))
-			sb.WriteString("(")
 			sb.WriteString(name)
-			sb.WriteString(")")
 		case *gotype.ArrayType:
 			if gotype.IsPgxSupportedArray(typ) {
 				sb.WriteString(name)
@@ -194,11 +194,7 @@ func (tq TemplatedQuery) EmitParamNames() string {
 			}
 			switch gotype.UnwrapNestedType(typ.Elem).(type) {
 			case *gotype.CompositeType, *gotype.EnumType:
-				sb.WriteString("q.types.")
-				sb.WriteString(NameArrayInitFunc(typ))
-				sb.WriteString("(")
 				sb.WriteString(name)
-				sb.WriteString(")")
 			default:
 				sb.WriteString(name)
 			}
@@ -435,7 +431,8 @@ func (tq TemplatedQuery) EmitZeroResult() (string, error) {
 		if len(tq.Outputs) > 1 {
 			return tq.Name + "Row{}", nil
 		}
-		typ := tq.Outputs[0].Type.BaseName()
+		goType := tq.Outputs[0].Type
+		typ := goType.BaseName()
 		switch {
 		case strings.HasPrefix(typ, "[]"):
 			return "nil", nil // empty slice
@@ -450,12 +447,23 @@ func (tq TemplatedQuery) EmitZeroResult() (string, error) {
 		case "bool":
 			return "false", nil
 		default:
-			return typ + "{}", nil // won't work for type Foo int
+			return toZeroValue(goType), nil
 		}
 	case ast.ResultKindString:
 		return "", fmt.Errorf("EmitZeroResult should not be called for kind: %s", tq.ResultKind)
 	default:
 		return "", fmt.Errorf("unhandled EmitZeroResult kind: %s", tq.ResultKind)
+	}
+}
+
+func toZeroValue(goType gotype.Type) string {
+	switch v := goType.(type) {
+	case *gotype.ImportType:
+		return toZeroValue(v.Type)
+	case *gotype.EnumType:
+		return fmt.Sprintf(`%s("")`, goType.BaseName())
+	default:
+		return goType.BaseName() + "{}"
 	}
 }
 

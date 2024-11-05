@@ -8,6 +8,9 @@ package {{.GoPkg}}
 import (
 {{ range $pkg := .Imports.Get }}	"{{$pkg}}"
 {{ end -}}
+{{- if .IsLeader -}}	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
+{{- "\n" -}}
+{{- end -}}
 )
 
 
@@ -32,7 +35,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn  genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -40,11 +44,18 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
 }
 
 {{- range .Declarers}}{{- "\n\n" -}}{{ .Declare $.PkgPath }}{{ end -}}
@@ -61,31 +72,36 @@ const {{ $q.SQLVarName }} = {{ $q.EmitPreparedSQL }}
 // {{ $q.Name }} implements Querier.{{ $q.Name }}.
 func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ $q.EmitResultType }}, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "{{ $q.Name }}")
-{{- if eq $q.ResultKind ":exec" }}
+
+    err := registerTypes(ctx, q.conn)
+    if err != nil {
+        return {{ $q.EmitZeroResult }}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+    }
+{{- if $q.Executable }}
 	cmdTag, err := q.conn.Exec(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
-		return {{ $q.EmitZeroResult }}, fmt.Errorf("exec query {{ $q.Name }}: %w", err)
+		return {{ $q.EmitZeroResult }}, fmt.Errorf("exec query {{ $q.Name }}: %w", q.errWrap(err))
 	}
-	return cmdTag, err
+	return cmdTag, q.errWrap(err)
 {{- else if eq $q.ResultKind ":rows" }}
     rows, err := q.conn.Query(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
-		return {{ $q.EmitZeroResult }}, fmt.Errorf("rows query {{ $q.Name }}: %w", err)
+		return {{ $q.EmitZeroResult }}, fmt.Errorf("rows query {{ $q.Name }}: %w", q.errWrap(err))
 	}
-	return rows, err
+	return rows, q.errWrap(err)
 {{- else }}
 	rows, err := q.conn.Query(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
-		return {{ $q.EmitZeroResult }}, fmt.Errorf("query {{ $q.Name }}: %w", err)
+		return {{ $q.EmitZeroResult }}, fmt.Errorf("query {{ $q.Name }}: %w", q.errWrap(err))
 	}
-
-	return {{ $q.EmitCollectionFunc }}(rows, {{ $q.EmitRowToFunc }}[{{ $q.EmitSingularResultType }}])
+	res, err := {{ $q.EmitCollectionFunc }}(rows, {{ $q.EmitRowToFunc }}[{{ $q.EmitSingularResultType }}])
+	return res, q.errWrap(err)
 {{- end }}
 }
 {{- end }}
 {{- end -}}
 {{- "\n" -}}
-{{ if .IsLeader }}
+{{ if false }}
 type scanCacheKey struct {
 	oid      uint32
 	format   int16

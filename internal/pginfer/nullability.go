@@ -1,10 +1,11 @@
 package pginfer
 
 import (
-	"github.com/mypricehealth/pggen/internal/ast"
-	"github.com/mypricehealth/pggen/internal/pg"
 	"strings"
 	"unicode"
+
+	"github.com/mypricehealth/pggen/internal/ast"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 // isColNullable tries to prove the column is not nullable. Strive for

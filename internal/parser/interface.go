@@ -4,10 +4,11 @@ package parser
 import (
 	"bytes"
 	"errors"
-	"github.com/mypricehealth/pggen/internal/ast"
 	gotok "go/token"
 	"io"
 	"os"
+
+	"github.com/mypricehealth/pggen/internal/ast"
 )
 
 // If src != nil, readSource converts src to a []byte if possible; otherwise it

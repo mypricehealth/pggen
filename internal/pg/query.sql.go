@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -39,7 +40,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -47,11 +49,46 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
+}
+
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
+		}
+	})
+
+	return registerErr
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
 }
 
 const findEnumTypesSQL = `WITH enums AS (
@@ -110,13 +147,18 @@ type FindEnumTypesRow struct {
 
 // FindEnumTypes implements Querier.FindEnumTypes.
 func (q *DBQuerier) FindEnumTypes(ctx context.Context, oids []uint32) ([]FindEnumTypesRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindEnumTypes")
 	rows, err := q.conn.Query(ctx, findEnumTypesSQL, oids)
 	if err != nil {
-		return nil, fmt.Errorf("query FindEnumTypes: %w", err)
+		return nil, fmt.Errorf("query FindEnumTypes: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindEnumTypesRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindEnumTypesRow])
+	return res, q.errWrap(err)
 }
 
 const findArrayTypesSQL = `SELECT
@@ -124,11 +166,14 @@ const findArrayTypesSQL = `SELECT
   -- typename: Data type name.
   arr_typ.typname::text AS type_name,
   elem_typ.oid          AS elem_oid,
+  nsp.nspname::text     AS namespace_name,
+  nsp.oid               AS namespace_oid,
   -- typtype: b for a base type, c for a composite type (e.g., a table's
   -- row type), d for a domain, e for an enum type, p for a pseudo-type,
   -- or r for a range type.
   arr_typ.typtype       AS type_kind
 FROM pg_type arr_typ
+  JOIN pg_namespace nsp ON arr_typ.typnamespace = nsp.oid
   JOIN pg_type elem_typ ON arr_typ.typelem = elem_typ.oid
 WHERE arr_typ.typisdefined
   AND arr_typ.typtype = 'b' -- Array types are base types
@@ -149,21 +194,28 @@ WHERE arr_typ.typisdefined
   AND arr_typ.oid = ANY ($1::oid[]);`
 
 type FindArrayTypesRow struct {
-	OID      uint32 `json:"oid"`
-	TypeName string `json:"type_name"`
-	ElemOID  uint32 `json:"elem_oid"`
-	TypeKind byte   `json:"type_kind"`
+	OID           uint32 `json:"oid"`
+	TypeName      string `json:"type_name"`
+	ElemOID       uint32 `json:"elem_oid"`
+	NamespaceName string `json:"namespace_name"`
+	NamespaceOID  uint32 `json:"namespace_oid"`
+	TypeKind      byte   `json:"type_kind"`
 }
 
 // FindArrayTypes implements Querier.FindArrayTypes.
 func (q *DBQuerier) FindArrayTypes(ctx context.Context, oids []uint32) ([]FindArrayTypesRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindArrayTypes")
 	rows, err := q.conn.Query(ctx, findArrayTypesSQL, oids)
 	if err != nil {
-		return nil, fmt.Errorf("query FindArrayTypes: %w", err)
+		return nil, fmt.Errorf("query FindArrayTypes: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindArrayTypesRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindArrayTypesRow])
+	return res, q.errWrap(err)
 }
 
 const findCompositeTypesSQL = `WITH table_cols AS (
@@ -185,6 +237,8 @@ const findCompositeTypesSQL = `WITH table_cols AS (
 SELECT
   typ.typname::text AS table_type_name,
   typ.oid           AS table_type_oid,
+  nsp.nspname::text AS table_namespace_name,
+  nsp.oid           AS table_namespace_oid,
   table_name,
   col_names,
   col_oids,
@@ -192,30 +246,38 @@ SELECT
   col_not_nulls,
   col_type_names
 FROM pg_type typ
+  JOIN pg_namespace nsp ON typ.typnamespace = nsp.oid
   JOIN table_cols cols ON typ.typrelid = cols.table_oid
 WHERE typ.oid = ANY ($1::oid[])
   AND typ.typtype = 'c';`
 
 type FindCompositeTypesRow struct {
-	TableTypeName string                 `json:"table_type_name"`
-	TableTypeOID  uint32                 `json:"table_type_oid"`
-	TableName     string                 `json:"table_name"`
-	ColNames      []string               `json:"col_names"`
-	ColOIDs       []int                  `json:"col_oids"`
-	ColOrders     []int                  `json:"col_orders"`
-	ColNotNulls   pgtype.FlatArray[bool] `json:"col_not_nulls"`
-	ColTypeNames  []string               `json:"col_type_names"`
+	TableTypeName      string                 `json:"table_type_name"`
+	TableTypeOID       uint32                 `json:"table_type_oid"`
+	TableNamespaceName string                 `json:"table_namespace_name"`
+	TableNamespaceOID  uint32                 `json:"table_namespace_oid"`
+	TableName          string                 `json:"table_name"`
+	ColNames           []string               `json:"col_names"`
+	ColOIDs            []int                  `json:"col_oids"`
+	ColOrders          []int                  `json:"col_orders"`
+	ColNotNulls        pgtype.FlatArray[bool] `json:"col_not_nulls"`
+	ColTypeNames       []string               `json:"col_type_names"`
 }
 
 // FindCompositeTypes implements Querier.FindCompositeTypes.
 func (q *DBQuerier) FindCompositeTypes(ctx context.Context, oids []uint32) ([]FindCompositeTypesRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindCompositeTypes")
 	rows, err := q.conn.Query(ctx, findCompositeTypesSQL, oids)
 	if err != nil {
-		return nil, fmt.Errorf("query FindCompositeTypes: %w", err)
+		return nil, fmt.Errorf("query FindCompositeTypes: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindCompositeTypesRow])
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindCompositeTypesRow])
+	return res, q.errWrap(err)
 }
 
 const findDescendantOIDsSQL = `WITH RECURSIVE oid_descs(oid) AS (
@@ -248,13 +310,18 @@ FROM oid_descs;`
 
 // FindDescendantOIDs implements Querier.FindDescendantOIDs.
 func (q *DBQuerier) FindDescendantOIDs(ctx context.Context, oids []uint32) ([]uint32, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindDescendantOIDs")
 	rows, err := q.conn.Query(ctx, findDescendantOIDsSQL, oids)
 	if err != nil {
-		return nil, fmt.Errorf("query FindDescendantOIDs: %w", err)
+		return nil, fmt.Errorf("query FindDescendantOIDs: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[uint32])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[uint32])
+	return res, q.errWrap(err)
 }
 
 const findOIDByNameSQL = `SELECT oid
@@ -265,13 +332,18 @@ LIMIT 1;`
 
 // FindOIDByName implements Querier.FindOIDByName.
 func (q *DBQuerier) FindOIDByName(ctx context.Context, name string) (uint32, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return 0, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindOIDByName")
 	rows, err := q.conn.Query(ctx, findOIDByNameSQL, name)
 	if err != nil {
-		return 0, fmt.Errorf("query FindOIDByName: %w", err)
+		return 0, fmt.Errorf("query FindOIDByName: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[uint32])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[uint32])
+	return res, q.errWrap(err)
 }
 
 const findOIDNameSQL = `SELECT typname AS name
@@ -280,13 +352,18 @@ WHERE oid = $1;`
 
 // FindOIDName implements Querier.FindOIDName.
 func (q *DBQuerier) FindOIDName(ctx context.Context, oid uint32) (string, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindOIDName")
 	rows, err := q.conn.Query(ctx, findOIDNameSQL, oid)
 	if err != nil {
-		return "", fmt.Errorf("query FindOIDName: %w", err)
+		return "", fmt.Errorf("query FindOIDName: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+	return res, q.errWrap(err)
 }
 
 const findOIDNamesSQL = `SELECT oid, typname AS name, typtype AS kind
@@ -301,66 +378,16 @@ type FindOIDNamesRow struct {
 
 // FindOIDNames implements Querier.FindOIDNames.
 func (q *DBQuerier) FindOIDNames(ctx context.Context, oid []uint32) ([]FindOIDNamesRow, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "FindOIDNames")
 	rows, err := q.conn.Query(ctx, findOIDNamesSQL, oid)
 	if err != nil {
-		return nil, fmt.Errorf("query FindOIDNames: %w", err)
+		return nil, fmt.Errorf("query FindOIDNames: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[FindOIDNamesRow])
-}
-
-type scanCacheKey struct {
-	oid      uint32
-	format   int16
-	typeName string
-}
-
-var (
-	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
-	plansMu sync.RWMutex
-)
-
-func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return plan
-}
-
-type ptrScanner[T any] struct {
-	basePlan pgtype.ScanPlan
-}
-
-func (s ptrScanner[T]) Scan(src []byte, dst any) error {
-	if src == nil {
-		return nil
-	}
-	d := dst.(**T)
-	*d = new(T)
-	return s.basePlan.Scan(src, *d)
-}
-
-func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	basePlan := planScan(codec, fd, target)
-	ptrPlan := ptrScanner[T]{basePlan}
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return ptrPlan
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOIDNamesRow])
+	return res, q.errWrap(err)
 }

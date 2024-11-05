@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -29,7 +30,8 @@ type Querier interface {
 var _ Querier = &DBQuerier{}
 
 type DBQuerier struct {
-	conn genericConn
+	conn    genericConn
+	errWrap func(err error) error
 }
 
 // genericConn is a connection like *pgx.Conn, pgx.Tx, or *pgxpool.Pool.
@@ -37,37 +39,82 @@ type genericConn interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	TypeMap() *pgtype.Map
+	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
 // NewQuerier creates a DBQuerier that implements Querier.
 func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{conn: conn}
+	return &DBQuerier{
+		conn: conn,
+		errWrap: func(err error) error {
+			return err
+		},
+	}
+}
+
+var registerOnce sync.Once
+var registerErr error
+
+func registerTypes(ctx context.Context, conn genericConn) error {
+	registerOnce.Do(func() {
+		typeMap := conn.TypeMap()
+
+		pgxdecimal.Register(typeMap)
+		for _, typ := range typesToRegister {
+			dt, err := conn.LoadType(ctx, typ)
+			if err != nil {
+				registerErr = err
+				return
+			}
+			typeMap.RegisterType(dt)
+		}
+	})
+
+	return registerErr
+}
+
+var typesToRegister = []string{}
+
+func addTypeToRegister(typ string) struct{} {
+	typesToRegister = append(typesToRegister, typ)
+	return struct{}{}
 }
 
 const getBoolsSQL = `SELECT $1::boolean[];`
 
 // GetBools implements Querier.GetBools.
 func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GetBools")
 	rows, err := q.conn.Query(ctx, getBoolsSQL, data)
 	if err != nil {
-		return nil, fmt.Errorf("query GetBools: %w", err)
+		return nil, fmt.Errorf("query GetBools: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]bool])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]bool])
+	return res, q.errWrap(err)
 }
 
 const getOneTimestampSQL = `SELECT $1::timestamp;`
 
 // GetOneTimestamp implements Querier.GetOneTimestamp.
 func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time.Time, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GetOneTimestamp")
 	rows, err := q.conn.Query(ctx, getOneTimestampSQL, data)
 	if err != nil {
-		return nil, fmt.Errorf("query GetOneTimestamp: %w", err)
+		return nil, fmt.Errorf("query GetOneTimestamp: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectExactlyOneRow(rows, pgx.RowTo[*time.Time])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*time.Time])
+	return res, q.errWrap(err)
 }
 
 const getManyTimestamptzsSQL = `SELECT *
@@ -75,13 +122,18 @@ FROM unnest($1::timestamptz[]);`
 
 // GetManyTimestamptzs implements Querier.GetManyTimestamptzs.
 func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) ([]*time.Time, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamptzs")
 	rows, err := q.conn.Query(ctx, getManyTimestamptzsSQL, data)
 	if err != nil {
-		return nil, fmt.Errorf("query GetManyTimestamptzs: %w", err)
+		return nil, fmt.Errorf("query GetManyTimestamptzs: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[*time.Time])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
+	return res, q.errWrap(err)
 }
 
 const getManyTimestampsSQL = `SELECT *
@@ -89,66 +141,16 @@ FROM unnest($1::timestamp[]);`
 
 // GetManyTimestamps implements Querier.GetManyTimestamps.
 func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([]*time.Time, error) {
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+	}
+
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamps")
 	rows, err := q.conn.Query(ctx, getManyTimestampsSQL, data)
 	if err != nil {
-		return nil, fmt.Errorf("query GetManyTimestamps: %w", err)
+		return nil, fmt.Errorf("query GetManyTimestamps: %w", q.errWrap(err))
 	}
-
-	return pgx.CollectRows(rows, pgx.RowTo[*time.Time])
-}
-
-type scanCacheKey struct {
-	oid      uint32
-	format   int16
-	typeName string
-}
-
-var (
-	plans   = make(map[scanCacheKey]pgtype.ScanPlan, 16)
-	plansMu sync.RWMutex
-)
-
-func planScan(codec pgtype.Codec, fd pgconn.FieldDescription, target any) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	plan = codec.PlanScan(nil, fd.DataTypeOID, fd.Format, target)
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return plan
-}
-
-type ptrScanner[T any] struct {
-	basePlan pgtype.ScanPlan
-}
-
-func (s ptrScanner[T]) Scan(src []byte, dst any) error {
-	if src == nil {
-		return nil
-	}
-	d := dst.(**T)
-	*d = new(T)
-	return s.basePlan.Scan(src, *d)
-}
-
-func planPtrScan[T any](codec pgtype.Codec, fd pgconn.FieldDescription, target *T) pgtype.ScanPlan {
-	key := scanCacheKey{fd.DataTypeOID, fd.Format, fmt.Sprintf("*%T", target)}
-	plansMu.RLock()
-	plan := plans[key]
-	plansMu.RUnlock()
-	if plan != nil {
-		return plan
-	}
-	basePlan := planScan(codec, fd, target)
-	ptrPlan := ptrScanner[T]{basePlan}
-	plansMu.Lock()
-	plans[key] = plan
-	plansMu.Unlock()
-	return ptrPlan
+	res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
+	return res, q.errWrap(err)
 }
