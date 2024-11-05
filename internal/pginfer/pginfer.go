@@ -30,8 +30,8 @@ type TypedQuery struct {
 	Doc []string
 	// The SQL query, with pggen functions replaced with Postgres syntax. Ready
 	// to run on Postgres with the PREPARE statement.
-	DenseSQL    []ast.DenseSQL
-	PreparedSQL string
+	ContiguousArgsSQL []ast.ContiguousArgsSQL
+	PreparedSQL       string
 	// The input parameters to the query.
 	Inputs []InputParam
 	// The output columns of the query.
@@ -110,14 +110,14 @@ func (inf *Inferrer) InferTypes(query *ast.SourceQuery) (TypedQuery, error) {
 	}
 	doc := extractDoc(query)
 	return TypedQuery{
-		Name:         query.Name,
-		ResultKind:   query.ResultKind,
-		Doc:          doc,
-		DenseSQL:     query.DenseSQL,
-		PreparedSQL:  query.PreparedSQL,
-		Inputs:       inputs,
-		Outputs:      outputs,
-		ProtobufType: query.Pragmas.ProtobufType,
+		Name:              query.Name,
+		ResultKind:        query.ResultKind,
+		Doc:               doc,
+		ContiguousArgsSQL: query.ContiguousArgsSQL,
+		PreparedSQL:       query.PreparedSQL,
+		Inputs:            inputs,
+		Outputs:           outputs,
+		ProtobufType:      query.Pragmas.ProtobufType,
 	}, nil
 }
 
@@ -127,7 +127,7 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	defer cancel()
 
 	// The final statement description is used for the output, if any.
-	statements := make([]*pgconn.StatementDescription, 0, len(query.DenseSQL))
+	statements := make([]*pgconn.StatementDescription, 0, len(query.ContiguousArgsSQL))
 
 	tx, err := inf.conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -135,7 +135,7 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 
-	for i, sql := range query.DenseSQL {
+	for i, sql := range query.ContiguousArgsSQL {
 		stmtDesc, err := inf.prepareQuery(ctx, sql.SQL, query.ResultKind)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to prepare query: %w", err)
@@ -153,7 +153,7 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 		statements = append(statements, stmtDesc)
 
 		// If this is the last statement, there's no need to actually execute it.
-		if i == len(query.DenseSQL)-1 {
+		if i == len(query.ContiguousArgsSQL)-1 {
 			continue
 		}
 
@@ -264,15 +264,15 @@ func (inf *Inferrer) getInputParamTypes(statements []*pgconn.StatementDescriptio
 
 	setParams := make([]bool, len(query.Params))
 
-	if len(statements) != len(query.DenseSQL) {
-		return nil, fmt.Errorf("expected %d statement descriptions; got %d", len(query.DenseSQL), len(statements))
+	if len(statements) != len(query.ContiguousArgsSQL) {
+		return nil, fmt.Errorf("expected %d statement descriptions; got %d", len(query.ContiguousArgsSQL), len(statements))
 	}
 
 	for i, statement := range statements {
-		denseSQL := query.DenseSQL[i]
+		contiguousArgs := query.ContiguousArgsSQL[i]
 
-		if len(statement.ParamOIDs) != denseSQL.UniqueArgs {
-			return nil, fmt.Errorf("expected %d parameter oids; got %d", denseSQL.UniqueArgs, len(statement.ParamOIDs))
+		if len(statement.ParamOIDs) != contiguousArgs.UniqueArgs {
+			return nil, fmt.Errorf("expected %d parameter oids; got %d", contiguousArgs.UniqueArgs, len(statement.ParamOIDs))
 		}
 
 		// To be analyzed, the parameters are required to be dense, i.e. `$1`, `$2`, `$3` etc.
@@ -282,7 +282,7 @@ func (inf *Inferrer) getInputParamTypes(statements []*pgconn.StatementDescriptio
 				oids = append(oids, oid)
 			}
 
-			paramIndex := denseSQL.Args[j]
+			paramIndex := contiguousArgs.Args[j]
 			indexes := oidToParamIndex[oid]
 
 			// This slice should be small enough that a linear search is fine (and even faster than a set).

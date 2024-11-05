@@ -36,7 +36,7 @@ func (inf *Inferrer) explainQuery(query *ast.SourceQuery) (Plan, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	if len(query.DenseSQL) == 0 {
+	if len(query.ContiguousArgsSQL) == 0 {
 		return Plan{}, fmt.Errorf("no sql to explain")
 	}
 
@@ -46,7 +46,7 @@ func (inf *Inferrer) explainQuery(query *ast.SourceQuery) (Plan, error) {
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 
-	startingSQL, lastSQL := query.DenseSQL[:len(query.DenseSQL)-1], query.DenseSQL[len(query.DenseSQL)-1]
+	startingSQL, lastSQL := query.ContiguousArgsSQL[:len(query.ContiguousArgsSQL)-1], query.ContiguousArgsSQL[len(query.ContiguousArgsSQL)-1]
 	for _, sql := range startingSQL {
 		_, err := inf.conn.Exec(ctx, sql.SQL, createParamArgs(len(sql.Args))...)
 		if err != nil {

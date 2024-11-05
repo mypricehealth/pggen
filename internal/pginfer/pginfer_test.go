@@ -40,11 +40,11 @@ func TestInferrer_InferTypes(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name     string
-		query    *ast.SourceQuery
-		denseSQL string
-		argCount int
-		want     TypedQuery
+		name              string
+		query             *ast.SourceQuery
+		contiguousArgsSQL string
+		argCount          int
+		want              TypedQuery
 	}{
 		{
 			name: "literal query",
@@ -52,7 +52,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Name:       "LiteralQuery",
 				ResultKind: ast.ResultKindOne,
 			},
-			denseSQL: "SELECT 1 as one, 'foo' as two",
+			contiguousArgsSQL: "SELECT 1 as one, 'foo' as two",
 			want: TypedQuery{
 				Name:       "LiteralQuery",
 				ResultKind: ast.ResultKindOne,
@@ -68,7 +68,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Name:       "UnionOneCol",
 				ResultKind: ast.ResultKindMany,
 			},
-			denseSQL: "SELECT 1 AS num UNION SELECT 2 AS num",
+			contiguousArgsSQL: "SELECT 1 AS num UNION SELECT 2 AS num",
 			want: TypedQuery{
 				Name:       "UnionOneCol",
 				ResultKind: ast.ResultKindMany,
@@ -83,7 +83,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Name:       "Domain",
 				ResultKind: ast.ResultKindOne,
 			},
-			denseSQL: "SELECT '94109'::us_postal_code",
+			contiguousArgsSQL: "SELECT '94109'::us_postal_code",
 			want: TypedQuery{
 				Name:       "Domain",
 				ResultKind: ast.ResultKindOne,
@@ -100,7 +100,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Name:       "UnionEnumArrays",
 				ResultKind: ast.ResultKindMany,
 			},
-			denseSQL: texts.Dedent(`
+			contiguousArgsSQL: texts.Dedent(`
                 SELECT enum_range('phone'::device_type, 'phone'::device_type) AS device_types
                 UNION ALL
                 SELECT enum_range(NULL::device_type) AS device_types;
@@ -134,8 +134,8 @@ func TestInferrer_InferTypes(t *testing.T) {
 				ResultKind: ast.ResultKindMany,
 				Doc:        newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
-			denseSQL: "SELECT first_name FROM author WHERE first_name = $1;",
-			argCount: 1,
+			contiguousArgsSQL: "SELECT first_name FROM author WHERE first_name = $1;",
+			argCount:          1,
 			want: TypedQuery{
 				Name:       "FindByFirstName",
 				ResultKind: ast.ResultKindMany,
@@ -156,8 +156,8 @@ func TestInferrer_InferTypes(t *testing.T) {
 				ResultKind: ast.ResultKindMany,
 				Doc:        newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
-			denseSQL: "SELECT a1.first_name FROM author a1 JOIN author a2 USING (author_id) WHERE a1.first_name = $1;",
-			argCount: 1,
+			contiguousArgsSQL: "SELECT a1.first_name FROM author a1 JOIN author a2 USING (author_id) WHERE a1.first_name = $1;",
+			argCount:          1,
 			want: TypedQuery{
 				Name:       "FindByFirstNameJoin",
 				ResultKind: ast.ResultKindMany,
@@ -178,8 +178,8 @@ func TestInferrer_InferTypes(t *testing.T) {
 				ResultKind: ast.ResultKindExec,
 				Doc:        newCommentGroup("-- One", "--- - two", "-- name: Foo"),
 			},
-			denseSQL: "DELETE FROM author WHERE author_id = $1;",
-			argCount: 1,
+			contiguousArgsSQL: "DELETE FROM author WHERE author_id = $1;",
+			argCount:          1,
 			want: TypedQuery{
 				Name:       "DeleteAuthorByID",
 				ResultKind: ast.ResultKindExec,
@@ -197,8 +197,8 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Params:     []ast.Param{{Name: "AuthorID"}},
 				ResultKind: ast.ResultKindMany,
 			},
-			denseSQL: "DELETE FROM author WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
-			argCount: 1,
+			contiguousArgsSQL: "DELETE FROM author WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
+			argCount:          1,
 			want: TypedQuery{
 				Name:       "DeleteAuthorByIDReturning",
 				ResultKind: ast.ResultKindMany,
@@ -219,8 +219,8 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Params:     []ast.Param{{Name: "AuthorID"}},
 				ResultKind: ast.ResultKindMany,
 			},
-			denseSQL: "UPDATE author set first_name = 'foo' WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
-			argCount: 1,
+			contiguousArgsSQL: "UPDATE author set first_name = 'foo' WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
+			argCount:          1,
 			want: TypedQuery{
 				Name:       "UpdateByAuthorIDReturning",
 				ResultKind: ast.ResultKindMany,
@@ -241,7 +241,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Params:     []ast.Param{},
 				ResultKind: ast.ResultKindExec,
 			},
-			denseSQL: "SELECT ''::void;",
+			contiguousArgsSQL: "SELECT ''::void;",
 			want: TypedQuery{
 				Name:       "VoidOne",
 				ResultKind: ast.ResultKindExec,
@@ -258,7 +258,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Params:     []ast.Param{},
 				ResultKind: ast.ResultKindOne,
 			},
-			denseSQL: "SELECT 'foo' as foo, ''::void;",
+			contiguousArgsSQL: "SELECT 'foo' as foo, ''::void;",
 			want: TypedQuery{
 				Name:       "VoidTwo",
 				ResultKind: ast.ResultKindOne,
@@ -276,7 +276,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				ResultKind: ast.ResultKindOne,
 				Pragmas:    ast.Pragmas{ProtobufType: "foo.Bar"},
 			},
-			denseSQL: "SELECT 1 as one, 'foo' as two",
+			contiguousArgsSQL: "SELECT 1 as one, 'foo' as two",
 			want: TypedQuery{
 				Name:       "PragmaProtoType",
 				ResultKind: ast.ResultKindOne,
@@ -295,7 +295,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				ResultKind: ast.ResultKindOne,
 				Doc:        newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
-			denseSQL: "SELECT array_agg(first_name) AS names FROM author;",
+			contiguousArgsSQL: "SELECT array_agg(first_name) AS names FROM author;",
 			want: TypedQuery{
 				Name:       "ArrayAggFirstName",
 				ResultKind: ast.ResultKindOne,
@@ -316,13 +316,13 @@ func TestInferrer_InferTypes(t *testing.T) {
 				args[i] = i
 			}
 
-			denseSQL := []ast.DenseSQL{{SQL: tt.denseSQL, Args: args, UniqueArgs: tt.argCount}}
+			contiguousArgs := []ast.ContiguousArgsSQL{{SQL: tt.contiguousArgsSQL, Args: args, UniqueArgs: tt.argCount}}
 
-			tt.query.DenseSQL = denseSQL
-			tt.query.PreparedSQL = tt.denseSQL
+			tt.query.ContiguousArgsSQL = contiguousArgs
+			tt.query.PreparedSQL = tt.contiguousArgsSQL
 
-			tt.want.DenseSQL = denseSQL
-            tt.want.PreparedSQL = tt.denseSQL
+			tt.want.ContiguousArgsSQL = contiguousArgs
+			tt.want.PreparedSQL = tt.contiguousArgsSQL
 
 			got, err := inferrer.InferTypes(tt.query)
 			if err != nil {
@@ -338,18 +338,18 @@ func TestInferrer_InferTypes(t *testing.T) {
 
 func TestInferrer_InferTypes_Multi(t *testing.T) {
 	query := &ast.SourceQuery{
-		Name:        "MultiQuery",
-		DenseSQL:    []ast.DenseSQL{{SQL: "SELECT $1::text;", Args: []int{0}}, {SQL: "SELECT $1::text[];", Args: []int{1}}},
-		PreparedSQL: "SELECT $1::text; SELECT $2::text[];",
-		Params:      []ast.Param{{Name: "TextParam"}, {Name: "TextArrayParam"}},
-		ResultKind:  ast.ResultKindOne,
+		Name:              "MultiQuery",
+		ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "SELECT $1::text;", Args: []int{0}}, {SQL: "SELECT $1::text[];", Args: []int{1}}},
+		PreparedSQL:       "SELECT $1::text; SELECT $2::text[];",
+		Params:            []ast.Param{{Name: "TextParam"}, {Name: "TextArrayParam"}},
+		ResultKind:        ast.ResultKindOne,
 	}
 
 	want := TypedQuery{
-		Name:        "MultiQuery",
-		ResultKind:  ast.ResultKindOne,
-		DenseSQL:    []ast.DenseSQL{{SQL: "SELECT $1::text;", Args: []int{0}}, {SQL: "SELECT $1::text[];", Args: []int{1}}},
-		PreparedSQL: "SELECT $1::text; SELECT $2::text[];",
+		Name:              "MultiQuery",
+		ResultKind:        ast.ResultKindOne,
+		ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "SELECT $1::text;", Args: []int{0}}, {SQL: "SELECT $1::text[];", Args: []int{1}}},
+		PreparedSQL:       "SELECT $1::text; SELECT $2::text[];",
 		Inputs: []InputParam{
 			{PgName: "TextParam", PgType: pg.Text},
 			{PgName: "TextArrayParam", PgType: pg.TextArray},
@@ -386,11 +386,11 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 	}{
 		{
 			&ast.SourceQuery{
-				Name:        "DeleteAuthorByIDMany",
-				DenseSQL:    []ast.DenseSQL{{SQL: "DELETE FROM author WHERE author_id = $1;", Args: []int{0}}},
-				PreparedSQL: "DELETE FROM author WHERE author_id = $1;",
-				Params:      []ast.Param{{Name: "AuthorID"}},
-				ResultKind:  ast.ResultKindMany,
+				Name:              "DeleteAuthorByIDMany",
+				ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "DELETE FROM author WHERE author_id = $1;", Args: []int{0}}},
+				PreparedSQL:       "DELETE FROM author WHERE author_id = $1;",
+				Params:            []ast.Param{{Name: "AuthorID"}},
+				ResultKind:        ast.ResultKindMany,
 			},
 			errors.New("query DeleteAuthorByIDMany has incompatible result kind :many; " +
 				"the query doesn't return any columns; " +
@@ -398,11 +398,11 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 		},
 		{
 			&ast.SourceQuery{
-				Name:        "DeleteAuthorByIDOne",
-				DenseSQL:    []ast.DenseSQL{{SQL: "DELETE FROM author WHERE author_id = $1;", Args: []int{0}}},
-				PreparedSQL: "DELETE FROM author WHERE author_id = $1;",
-				Params:      []ast.Param{{Name: "AuthorID"}},
-				ResultKind:  ast.ResultKindOne,
+				Name:              "DeleteAuthorByIDOne",
+				ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "DELETE FROM author WHERE author_id = $1;", Args: []int{0}}},
+				PreparedSQL:       "DELETE FROM author WHERE author_id = $1;",
+				Params:            []ast.Param{{Name: "AuthorID"}},
+				ResultKind:        ast.ResultKindOne,
 			},
 			errors.New(
 				"query DeleteAuthorByIDOne has incompatible result kind :one; " +
@@ -411,11 +411,11 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 		},
 		{
 			&ast.SourceQuery{
-				Name:        "VoidOne",
-				DenseSQL:    []ast.DenseSQL{{SQL: "SELECT ''::void;"}},
-				PreparedSQL: "SELECT ''::void;",
-				Params:      nil,
-				ResultKind:  ast.ResultKindMany,
+				Name:              "VoidOne",
+				ContiguousArgsSQL: []ast.ContiguousArgsSQL{{SQL: "SELECT ''::void;"}},
+				PreparedSQL:       "SELECT ''::void;",
+				Params:            nil,
+				ResultKind:        ast.ResultKindMany,
 			},
 			errors.New(
 				"query VoidOne has incompatible result kind :many; " +

@@ -229,7 +229,7 @@ func (p *parser) parseQuery() ast.Query {
 	names := make([]argData, 0, 4) // all pggen argument names in order, can be duplicated
 
 	var sql []string
-	var denseSQL []ast.DenseSQL
+	var contiguousArgs []ast.ContiguousArgsSQL
 	preparedSQL := &strings.Builder{}
 	var params []ast.Param
 	paramIndexes := make(map[string]int)
@@ -282,7 +282,7 @@ func (p *parser) parseQuery() ast.Query {
 
 			sql = append(sql, currentSQL)
 
-			var dense ast.DenseSQL
+			var dense ast.ContiguousArgsSQL
 			var prepared string
 			dense, prepared, params = prepareSQL(currentSQL, names, params, paramIndexes)
 
@@ -291,7 +291,7 @@ func (p *parser) parseQuery() ast.Query {
 			names = slices.Delete(names, 0, len(names))
 
 			preparedSQL.WriteString(prepared)
-			denseSQL = append(denseSQL, dense)
+			contiguousArgs = append(contiguousArgs, dense)
 		}
 
 		// A series of line comments may actually be leading comments to the next query group so they must be tracked.
@@ -342,16 +342,16 @@ func (p *parser) parseQuery() ast.Query {
 	}
 
 	return &ast.SourceQuery{
-		Name:        annotations[1],
-		Doc:         doc,
-		Start:       pos,
-		SourceSQL:   sql,
-		DenseSQL:    denseSQL,
-		PreparedSQL: preparedSQL.String(),
-		Params:      params,
-		ResultKind:  resultKind,
-		Pragmas:     pragmas,
-		EndPos:      endPos,
+		Name:              annotations[1],
+		Doc:               doc,
+		Start:             pos,
+		SourceSQL:         sql,
+		ContiguousArgsSQL: contiguousArgs,
+		PreparedSQL:       preparedSQL.String(),
+		Params:            params,
+		ResultKind:        resultKind,
+		Pragmas:           pragmas,
+		EndPos:            endPos,
 	}
 }
 
@@ -443,9 +443,9 @@ func (p *parser) parsePggenArg(functionName string) (argData, bool) {
 
 // prepareSQL replaces each pggen argument with the $n, respecting the order that the
 // arg first appeared. Args with the same name use the same $n.
-func prepareSQL(sql string, args []argData, params []ast.Param, paramIndexes map[string]int) (ast.DenseSQL, string, []ast.Param) {
+func prepareSQL(sql string, args []argData, params []ast.Param, paramIndexes map[string]int) (ast.ContiguousArgsSQL, string, []ast.Param) {
 	if len(args) == 0 {
-		return ast.DenseSQL{SQL: sql}, sql, params
+		return ast.ContiguousArgsSQL{SQL: sql}, sql, params
 	}
 
 	// Add any new params.
@@ -470,7 +470,7 @@ func prepareSQL(sql string, args []argData, params []ast.Param, paramIndexes map
 	argIndex := 0
 	denseIndexes := make(map[string]int, len(args))
 
-	var denseSQL ast.DenseSQL
+	var contiguousArgs ast.ContiguousArgsSQL
 	for _, arg := range args {
 		sb.Write(bs[prev:arg.lo])
 		sb.WriteByte('$')
@@ -482,7 +482,7 @@ func prepareSQL(sql string, args []argData, params []ast.Param, paramIndexes map
 			argIndex++
 
 			// Remembering the real indexes is necessary too however.
-			denseSQL.Args = append(denseSQL.Args, realPosition)
+			contiguousArgs.Args = append(contiguousArgs.Args, realPosition)
 		}
 
 		// When SQL is being prepared it must be dense, i.e. remapping something like $5, $3 to $1, $2.
@@ -497,10 +497,10 @@ func prepareSQL(sql string, args []argData, params []ast.Param, paramIndexes map
 	sb.Write(bs[prev:])
 	realSQL.Write(bs[prev:])
 
-	denseSQL.SQL = sb.String()
-	denseSQL.UniqueArgs = argIndex
+	contiguousArgs.SQL = sb.String()
+	contiguousArgs.UniqueArgs = argIndex
 
-	return denseSQL, realSQL.String(), params
+	return contiguousArgs, realSQL.String(), params
 }
 
 // ----------------------------------------------------------------------------

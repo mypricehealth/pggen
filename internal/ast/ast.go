@@ -93,16 +93,16 @@ type (
 
 	// An SourceQuery node represents a query entry from the source code.
 	SourceQuery struct {
-		Name        string        // name of the query
-		Doc         *CommentGroup // associated documentation; or nil
-		Start       gotok.Pos     // position of the start token, like 'SELECT' or 'UPDATE'
-		SourceSQL   []string      // the complete sql query as it appeared in the source file
-		DenseSQL    []DenseSQL    // a list of sql queries with args replaced by dense placeholders with a mapping to the real placeholders. Useful for `Prepare`.
-		PreparedSQL string        // The prepared sql to be executed.
-		Params      []Param       // the name of each param in the PreparedSQL, the nth entry is the $n+1 param
-		ResultKind  ResultKind    // the result output type
-		Pragmas     Pragmas       // optional query options
-		EndPos      gotok.Pos     // position of the closing semicolon
+		Name              string              // name of the query
+		Doc               *CommentGroup       // associated documentation; or nil
+		Start             gotok.Pos           // position of the start token, like 'SELECT' or 'UPDATE'
+		SourceSQL         []string            // the complete sql query as it appeared in the source file
+		ContiguousArgsSQL []ContiguousArgsSQL // a list of sql queries with args replaced by dense placeholders with a mapping to the real placeholders. Useful for `Prepare`.
+		PreparedSQL       string              // The prepared sql to be executed.
+		Params            []Param             // the name of each param in the PreparedSQL, the nth entry is the $n+1 param
+		ResultKind        ResultKind          // the result output type
+		Pragmas           Pragmas             // optional query options
+		EndPos            gotok.Pos           // position of the closing semicolon
 	}
 
 	Param struct {
@@ -111,7 +111,7 @@ type (
 	}
 )
 
-type DenseSQL struct {
+type ContiguousArgsSQL struct {
 	// This is the SQL with the args replaced by dense placeholders.
 	SQL string
 

@@ -187,21 +187,21 @@ func NewEnumType(pkgPath string, pgEnum pg.EnumType, caser casing.Caser) Type {
 }
 
 func makeUnique(labels []string) []string {
-	seen := make(map[string]bool, len(labels))
+	unique := make(map[string]bool, len(labels))
 	for _, label := range labels {
-		if _, ok := seen[label]; ok {
-			seen[label] = false
+		if _, ok := unique[label]; ok {
+			unique[label] = false
 			continue
 		}
 
-		seen[label] = true
+		unique[label] = true
 	}
 
 	// There's technically the possibility of conflicts still.
 	// However at that point the name would get much worse.
 	uniqueItems := make([]string, 0, len(labels))
 	for i, label := range labels {
-		if isUnique := seen[label]; !isUnique {
+		if isUnique := unique[label]; !isUnique {
 			label = fmt.Sprintf("%s_%d", label, i)
 		}
 
