@@ -32,6 +32,8 @@ type ExplainQueryResultRow struct {
 
 // explainQuery executes explain plan to get the node plan type and the format
 // of the output columns.
+//
+// Expects the prior SQL to have already been run in the current connection.
 func (inf *Inferrer) explainQuery(query *ast.SourceQuery) (Plan, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
@@ -46,13 +48,7 @@ func (inf *Inferrer) explainQuery(query *ast.SourceQuery) (Plan, error) {
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 
-	startingSQL, lastSQL := query.ContiguousArgsSQL[:len(query.ContiguousArgsSQL)-1], query.ContiguousArgsSQL[len(query.ContiguousArgsSQL)-1]
-	for _, sql := range startingSQL {
-		_, err := inf.conn.Exec(ctx, sql.SQL, createParamArgs(len(sql.Args))...)
-		if err != nil {
-			return Plan{}, fmt.Errorf("execute prepared query: %w", err)
-		}
-	}
+	lastSQL := query.ContiguousArgsSQL[len(query.ContiguousArgsSQL)-1]
 
 	explainQuery := `EXPLAIN (VERBOSE, FORMAT JSON) ` + lastSQL.SQL
 	row := inf.conn.QueryRow(ctx, explainQuery, createParamArgs(len(lastSQL.Args))...)
