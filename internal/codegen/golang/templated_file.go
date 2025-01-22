@@ -440,7 +440,7 @@ func (tq TemplatedQuery) EmitZeroResult() (string, error) {
 			return "nil", nil // nil pointer
 		}
 		switch typ {
-		case "int", "int32", "int64", "float32", "float64", "uint", "uint32", "uint64":
+		case "int", "int8", "int16", "int32", "int64", "float32", "float64", "uint", "uint8", "uint16", "uint32", "uint64", "complex64", "complex128", "uintptr":
 			return "0", nil
 		case "string":
 			return `""`, nil
