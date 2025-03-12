@@ -57,7 +57,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -78,12 +78,12 @@ const domainOneSQL = `SELECT '90210'::us_postal_code;`
 
 // DomainOne implements Querier.DomainOne.
 func (q *DBQuerier) DomainOne(ctx context.Context) (string, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "DomainOne")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return "", q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "DomainOne")
 	rows, err := q.conn.Query(ctx, domainOneSQL)
 	if err != nil {
 		return "", fmt.Errorf("query DomainOne: %w", q.errWrap(err))

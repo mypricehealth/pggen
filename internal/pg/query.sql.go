@@ -74,7 +74,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -147,12 +147,12 @@ type FindEnumTypesRow struct {
 
 // FindEnumTypes implements Querier.FindEnumTypes.
 func (q *DBQuerier) FindEnumTypes(ctx context.Context, oids []uint32) ([]FindEnumTypesRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindEnumTypes")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindEnumTypes")
 	rows, err := q.conn.Query(ctx, findEnumTypesSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindEnumTypes: %w", q.errWrap(err))
@@ -204,12 +204,12 @@ type FindArrayTypesRow struct {
 
 // FindArrayTypes implements Querier.FindArrayTypes.
 func (q *DBQuerier) FindArrayTypes(ctx context.Context, oids []uint32) ([]FindArrayTypesRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindArrayTypes")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindArrayTypes")
 	rows, err := q.conn.Query(ctx, findArrayTypesSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindArrayTypes: %w", q.errWrap(err))
@@ -266,12 +266,12 @@ type FindCompositeTypesRow struct {
 
 // FindCompositeTypes implements Querier.FindCompositeTypes.
 func (q *DBQuerier) FindCompositeTypes(ctx context.Context, oids []uint32) ([]FindCompositeTypesRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindCompositeTypes")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindCompositeTypes")
 	rows, err := q.conn.Query(ctx, findCompositeTypesSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindCompositeTypes: %w", q.errWrap(err))
@@ -310,12 +310,12 @@ FROM oid_descs;`
 
 // FindDescendantOIDs implements Querier.FindDescendantOIDs.
 func (q *DBQuerier) FindDescendantOIDs(ctx context.Context, oids []uint32) ([]uint32, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindDescendantOIDs")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindDescendantOIDs")
 	rows, err := q.conn.Query(ctx, findDescendantOIDsSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindDescendantOIDs: %w", q.errWrap(err))
@@ -332,12 +332,12 @@ LIMIT 1;`
 
 // FindOIDByName implements Querier.FindOIDByName.
 func (q *DBQuerier) FindOIDByName(ctx context.Context, name string) (uint32, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindOIDByName")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return 0, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return 0, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindOIDByName")
 	rows, err := q.conn.Query(ctx, findOIDByNameSQL, name)
 	if err != nil {
 		return 0, fmt.Errorf("query FindOIDByName: %w", q.errWrap(err))
@@ -352,12 +352,12 @@ WHERE oid = $1;`
 
 // FindOIDName implements Querier.FindOIDName.
 func (q *DBQuerier) FindOIDName(ctx context.Context, oid uint32) (string, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindOIDName")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return "", q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindOIDName")
 	rows, err := q.conn.Query(ctx, findOIDNameSQL, oid)
 	if err != nil {
 		return "", fmt.Errorf("query FindOIDName: %w", q.errWrap(err))
@@ -378,12 +378,12 @@ type FindOIDNamesRow struct {
 
 // FindOIDNames implements Querier.FindOIDNames.
 func (q *DBQuerier) FindOIDNames(ctx context.Context, oid []uint32) ([]FindOIDNamesRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindOIDNames")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindOIDNames")
 	rows, err := q.conn.Query(ctx, findOIDNamesSQL, oid)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOIDNames: %w", q.errWrap(err))

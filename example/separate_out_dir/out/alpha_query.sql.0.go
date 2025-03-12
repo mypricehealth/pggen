@@ -68,7 +68,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -93,12 +93,12 @@ const alphaNestedSQL = `SELECT 'alpha_nested' as output;`
 
 // AlphaNested implements Querier.AlphaNested.
 func (q *DBQuerier) AlphaNested(ctx context.Context) (string, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "AlphaNested")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return "", q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "AlphaNested")
 	rows, err := q.conn.Query(ctx, alphaNestedSQL)
 	if err != nil {
 		return "", fmt.Errorf("query AlphaNested: %w", q.errWrap(err))
@@ -111,12 +111,12 @@ const alphaCompositeArraySQL = `SELECT ARRAY[ROW('key')]::alpha[];`
 
 // AlphaCompositeArray implements Querier.AlphaCompositeArray.
 func (q *DBQuerier) AlphaCompositeArray(ctx context.Context) ([]Alpha, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "AlphaCompositeArray")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "AlphaCompositeArray")
 	rows, err := q.conn.Query(ctx, alphaCompositeArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query AlphaCompositeArray: %w", q.errWrap(err))

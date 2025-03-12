@@ -90,7 +90,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -124,12 +124,12 @@ type FindDevicesByUserRow struct {
 
 // FindDevicesByUser implements Querier.FindDevicesByUser.
 func (q *DBQuerier) FindDevicesByUser(ctx context.Context, id int) ([]FindDevicesByUserRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindDevicesByUser")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindDevicesByUser")
 	rows, err := q.conn.Query(ctx, findDevicesByUserSQL, id)
 	if err != nil {
 		return nil, fmt.Errorf("query FindDevicesByUser: %w", q.errWrap(err))
@@ -153,12 +153,12 @@ type CompositeUserRow struct {
 
 // CompositeUser implements Querier.CompositeUser.
 func (q *DBQuerier) CompositeUser(ctx context.Context) ([]CompositeUserRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "CompositeUser")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "CompositeUser")
 	rows, err := q.conn.Query(ctx, compositeUserSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query CompositeUser: %w", q.errWrap(err))
@@ -171,12 +171,12 @@ const compositeUserOneSQL = `SELECT ROW (15, 'qux')::"user" AS "user";`
 
 // CompositeUserOne implements Querier.CompositeUserOne.
 func (q *DBQuerier) CompositeUserOne(ctx context.Context) (User, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOne")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return User{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return User{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOne")
 	rows, err := q.conn.Query(ctx, compositeUserOneSQL)
 	if err != nil {
 		return User{}, fmt.Errorf("query CompositeUserOne: %w", q.errWrap(err))
@@ -194,12 +194,12 @@ type CompositeUserOneTwoColsRow struct {
 
 // CompositeUserOneTwoCols implements Querier.CompositeUserOneTwoCols.
 func (q *DBQuerier) CompositeUserOneTwoCols(ctx context.Context) (CompositeUserOneTwoColsRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOneTwoCols")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return CompositeUserOneTwoColsRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return CompositeUserOneTwoColsRow{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOneTwoCols")
 	rows, err := q.conn.Query(ctx, compositeUserOneTwoColsSQL)
 	if err != nil {
 		return CompositeUserOneTwoColsRow{}, fmt.Errorf("query CompositeUserOneTwoCols: %w", q.errWrap(err))
@@ -212,12 +212,12 @@ const compositeUserManySQL = `SELECT ROW (15, 'qux')::"user" AS "user";`
 
 // CompositeUserMany implements Querier.CompositeUserMany.
 func (q *DBQuerier) CompositeUserMany(ctx context.Context) ([]User, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserMany")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserMany")
 	rows, err := q.conn.Query(ctx, compositeUserManySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query CompositeUserMany: %w", q.errWrap(err))
@@ -231,12 +231,12 @@ VALUES ($1, $2);`
 
 // InsertUser implements Querier.InsertUser.
 func (q *DBQuerier) InsertUser(ctx context.Context, userID int, name string) (pgconn.CommandTag, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "InsertUser")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return pgconn.CommandTag{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "InsertUser")
 	cmdTag, err := q.conn.Exec(ctx, insertUserSQL, userID, name)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertUser: %w", q.errWrap(err))
@@ -249,12 +249,12 @@ VALUES ($1, $2);`
 
 // InsertDevice implements Querier.InsertDevice.
 func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, owner int) (pgconn.CommandTag, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return pgconn.CommandTag{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, owner)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", q.errWrap(err))
