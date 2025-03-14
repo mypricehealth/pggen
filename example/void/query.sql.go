@@ -65,7 +65,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -86,12 +86,12 @@ const voidOnlySQL = `SELECT void_fn();`
 
 // VoidOnly implements Querier.VoidOnly.
 func (q *DBQuerier) VoidOnly(ctx context.Context) (pgconn.CommandTag, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "VoidOnly")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return pgconn.CommandTag{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "VoidOnly")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlySQL)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnly: %w", q.errWrap(err))
@@ -103,12 +103,12 @@ const voidOnlyTwoParamsSQL = `SELECT void_fn_two_params($1, 'text');`
 
 // VoidOnlyTwoParams implements Querier.VoidOnlyTwoParams.
 func (q *DBQuerier) VoidOnlyTwoParams(ctx context.Context, id int32) (pgconn.CommandTag, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "VoidOnlyTwoParams")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return pgconn.CommandTag{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "VoidOnlyTwoParams")
 	cmdTag, err := q.conn.Exec(ctx, voidOnlyTwoParamsSQL, id)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnlyTwoParams: %w", q.errWrap(err))
@@ -120,12 +120,12 @@ const voidTwoSQL = `SELECT void_fn(), 'foo' as name;`
 
 // VoidTwo implements Querier.VoidTwo.
 func (q *DBQuerier) VoidTwo(ctx context.Context) (string, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "VoidTwo")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return "", fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return "", q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "VoidTwo")
 	rows, err := q.conn.Query(ctx, voidTwoSQL)
 	if err != nil {
 		return "", fmt.Errorf("query VoidTwo: %w", q.errWrap(err))
@@ -143,12 +143,12 @@ type VoidThreeRow struct {
 
 // VoidThree implements Querier.VoidThree.
 func (q *DBQuerier) VoidThree(ctx context.Context) (VoidThreeRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "VoidThree")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return VoidThreeRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return VoidThreeRow{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "VoidThree")
 	rows, err := q.conn.Query(ctx, voidThreeSQL)
 	if err != nil {
 		return VoidThreeRow{}, fmt.Errorf("query VoidThree: %w", q.errWrap(err))
@@ -161,12 +161,12 @@ const voidThree2SQL = `SELECT 'foo' as foo, void_fn(), void_fn();`
 
 // VoidThree2 implements Querier.VoidThree2.
 func (q *DBQuerier) VoidThree2(ctx context.Context) ([]string, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "VoidThree2")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "VoidThree2")
 	rows, err := q.conn.Query(ctx, voidThree2SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query VoidThree2: %w", q.errWrap(err))

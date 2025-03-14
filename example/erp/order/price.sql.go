@@ -22,12 +22,12 @@ type FindOrdersByPriceRow struct {
 
 // FindOrdersByPrice implements Querier.FindOrdersByPrice.
 func (q *DBQuerier) FindOrdersByPrice(ctx context.Context, minTotal decimal.Decimal) ([]FindOrdersByPriceRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByPrice")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByPrice")
 	rows, err := q.conn.Query(ctx, findOrdersByPriceSQL, minTotal)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByPrice: %w", q.errWrap(err))
@@ -47,12 +47,12 @@ type FindOrdersMRRRow struct {
 
 // FindOrdersMRR implements Querier.FindOrdersMRR.
 func (q *DBQuerier) FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersMRR")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersMRR")
 	rows, err := q.conn.Query(ctx, findOrdersMRRSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersMRR: %w", q.errWrap(err))

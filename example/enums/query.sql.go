@@ -92,7 +92,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -123,12 +123,12 @@ type FindAllDevicesRow struct {
 
 // FindAllDevices implements Querier.FindAllDevices.
 func (q *DBQuerier) FindAllDevices(ctx context.Context) ([]FindAllDevicesRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindAllDevices")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindAllDevices")
 	rows, err := q.conn.Query(ctx, findAllDevicesSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindAllDevices: %w", q.errWrap(err))
@@ -142,12 +142,12 @@ VALUES ($1, $2);`
 
 // InsertDevice implements Querier.InsertDevice.
 func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, typePg DeviceType) (pgconn.CommandTag, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return pgconn.CommandTag{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, typePg)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", q.errWrap(err))
@@ -159,12 +159,12 @@ const findOneDeviceArraySQL = `SELECT enum_range(NULL::device_type) AS device_ty
 
 // FindOneDeviceArray implements Querier.FindOneDeviceArray.
 func (q *DBQuerier) FindOneDeviceArray(ctx context.Context) ([]DeviceType, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindOneDeviceArray")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindOneDeviceArray")
 	rows, err := q.conn.Query(ctx, findOneDeviceArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOneDeviceArray: %w", q.errWrap(err))
@@ -179,12 +179,12 @@ SELECT enum_range(NULL::device_type) AS device_types;`
 
 // FindManyDeviceArray implements Querier.FindManyDeviceArray.
 func (q *DBQuerier) FindManyDeviceArray(ctx context.Context) ([][]DeviceType, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArray")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArray")
 	rows, err := q.conn.Query(ctx, findManyDeviceArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArray: %w", q.errWrap(err))
@@ -204,12 +204,12 @@ type FindManyDeviceArrayWithNumRow struct {
 
 // FindManyDeviceArrayWithNum implements Querier.FindManyDeviceArrayWithNum.
 func (q *DBQuerier) FindManyDeviceArrayWithNum(ctx context.Context) ([]FindManyDeviceArrayWithNumRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArrayWithNum")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArrayWithNum")
 	rows, err := q.conn.Query(ctx, findManyDeviceArrayWithNumSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArrayWithNum: %w", q.errWrap(err))
@@ -222,12 +222,12 @@ const enumInsideCompositeSQL = `SELECT ROW('08:00:2b:01:02:03'::macaddr, 'phone'
 
 // EnumInsideComposite implements Querier.EnumInsideComposite.
 func (q *DBQuerier) EnumInsideComposite(ctx context.Context) (Device, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "EnumInsideComposite")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return Device{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return Device{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "EnumInsideComposite")
 	rows, err := q.conn.Query(ctx, enumInsideCompositeSQL)
 	if err != nil {
 		return Device{}, fmt.Errorf("query EnumInsideComposite: %w", q.errWrap(err))

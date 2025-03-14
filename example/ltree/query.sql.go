@@ -63,7 +63,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -86,12 +86,12 @@ WHERE path <@ 'Top.Science';`
 
 // FindTopScienceChildren implements Querier.FindTopScienceChildren.
 func (q *DBQuerier) FindTopScienceChildren(ctx context.Context) ([]pgtype.Text, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildren")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildren")
 	rows, err := q.conn.Query(ctx, findTopScienceChildrenSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindTopScienceChildren: %w", q.errWrap(err))
@@ -106,12 +106,12 @@ WHERE path <@ 'Top.Science';`
 
 // FindTopScienceChildrenAgg implements Querier.FindTopScienceChildrenAgg.
 func (q *DBQuerier) FindTopScienceChildrenAgg(ctx context.Context) (pgtype.TextArray, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildrenAgg")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return TextArray{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return TextArray{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildrenAgg")
 	rows, err := q.conn.Query(ctx, findTopScienceChildrenAggSQL)
 	if err != nil {
 		return TextArray{}, fmt.Errorf("query FindTopScienceChildrenAgg: %w", q.errWrap(err))
@@ -137,12 +137,12 @@ VALUES ('Top'),
 
 // InsertSampleData implements Querier.InsertSampleData.
 func (q *DBQuerier) InsertSampleData(ctx context.Context) (pgconn.CommandTag, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "InsertSampleData")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return pgconn.CommandTag{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "InsertSampleData")
 	cmdTag, err := q.conn.Exec(ctx, insertSampleDataSQL)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertSampleData: %w", q.errWrap(err))
@@ -168,12 +168,12 @@ type FindLtreeInputRow struct {
 
 // FindLtreeInput implements Querier.FindLtreeInput.
 func (q *DBQuerier) FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inLtreeArray []string) (FindLtreeInputRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindLtreeInput")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return FindLtreeInputRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return FindLtreeInputRow{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindLtreeInput")
 	rows, err := q.conn.Query(ctx, findLtreeInputSQL, inLtree, inLtreeArray)
 	if err != nil {
 		return FindLtreeInputRow{}, fmt.Errorf("query FindLtreeInput: %w", q.errWrap(err))

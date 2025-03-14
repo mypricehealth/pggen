@@ -69,7 +69,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -101,12 +101,12 @@ type OutParamsRow struct {
 
 // OutParams implements Querier.OutParams.
 func (q *DBQuerier) OutParams(ctx context.Context) ([]OutParamsRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "OutParams")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "OutParams")
 	rows, err := q.conn.Query(ctx, outParamsSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query OutParams: %w", q.errWrap(err))

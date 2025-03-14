@@ -169,7 +169,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)

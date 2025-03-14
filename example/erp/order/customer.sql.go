@@ -71,7 +71,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -100,12 +100,12 @@ type CreateTenantRow struct {
 
 // CreateTenant implements Querier.CreateTenant.
 func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (CreateTenantRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "CreateTenant")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return CreateTenantRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return CreateTenantRow{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "CreateTenant")
 	rows, err := q.conn.Query(ctx, createTenantSQL, key, name)
 	if err != nil {
 		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", q.errWrap(err))
@@ -127,12 +127,12 @@ type FindOrdersByCustomerRow struct {
 
 // FindOrdersByCustomer implements Querier.FindOrdersByCustomer.
 func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) ([]FindOrdersByCustomerRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByCustomer")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByCustomer")
 	rows, err := q.conn.Query(ctx, findOrdersByCustomerSQL, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", q.errWrap(err))
@@ -155,12 +155,12 @@ type FindProductsInOrderRow struct {
 
 // FindProductsInOrder implements Querier.FindProductsInOrder.
 func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]FindProductsInOrderRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindProductsInOrder")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindProductsInOrder")
 	rows, err := q.conn.Query(ctx, findProductsInOrderSQL, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindProductsInOrder: %w", q.errWrap(err))
@@ -188,12 +188,12 @@ type InsertCustomerRow struct {
 
 // InsertCustomer implements Querier.InsertCustomer.
 func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerParams) (InsertCustomerRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "InsertCustomer")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return InsertCustomerRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return InsertCustomerRow{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "InsertCustomer")
 	rows, err := q.conn.Query(ctx, insertCustomerSQL, params.FirstName, params.LastName, params.Email)
 	if err != nil {
 		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", q.errWrap(err))
@@ -221,12 +221,12 @@ type InsertOrderRow struct {
 
 // InsertOrder implements Querier.InsertOrder.
 func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (InsertOrderRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "InsertOrder")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return InsertOrderRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return InsertOrderRow{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "InsertOrder")
 	rows, err := q.conn.Query(ctx, insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
 	if err != nil {
 		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", q.errWrap(err))

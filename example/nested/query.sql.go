@@ -78,7 +78,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -111,12 +111,12 @@ const arrayNested2SQL = `SELECT
 
 // ArrayNested2 implements Querier.ArrayNested2.
 func (q *DBQuerier) ArrayNested2(ctx context.Context) ([]ProductImageType, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "ArrayNested2")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "ArrayNested2")
 	rows, err := q.conn.Query(ctx, arrayNested2SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query ArrayNested2: %w", q.errWrap(err))
@@ -137,12 +137,12 @@ const nested3SQL = `SELECT
 
 // Nested3 implements Querier.Nested3.
 func (q *DBQuerier) Nested3(ctx context.Context) ([]ProductImageSetType, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "Nested3")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "Nested3")
 	rows, err := q.conn.Query(ctx, nested3SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query Nested3: %w", q.errWrap(err))

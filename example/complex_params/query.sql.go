@@ -84,7 +84,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -113,12 +113,12 @@ const paramArrayIntSQL = `SELECT $1::bigint[];`
 
 // ParamArrayInt implements Querier.ParamArrayInt.
 func (q *DBQuerier) ParamArrayInt(ctx context.Context, ints []int) ([]int, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "ParamArrayInt")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "ParamArrayInt")
 	rows, err := q.conn.Query(ctx, paramArrayIntSQL, ints)
 	if err != nil {
 		return nil, fmt.Errorf("query ParamArrayInt: %w", q.errWrap(err))
@@ -131,12 +131,12 @@ const paramNested1SQL = `SELECT $1::dimensions;`
 
 // ParamNested1 implements Querier.ParamNested1.
 func (q *DBQuerier) ParamNested1(ctx context.Context, dimensions Dimensions) (Dimensions, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "ParamNested1")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return Dimensions{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return Dimensions{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "ParamNested1")
 	rows, err := q.conn.Query(ctx, paramNested1SQL, dimensions)
 	if err != nil {
 		return Dimensions{}, fmt.Errorf("query ParamNested1: %w", q.errWrap(err))
@@ -149,12 +149,12 @@ const paramNested2SQL = `SELECT $1::product_image_type;`
 
 // ParamNested2 implements Querier.ParamNested2.
 func (q *DBQuerier) ParamNested2(ctx context.Context, image ProductImageType) (ProductImageType, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "ParamNested2")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return ProductImageType{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return ProductImageType{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "ParamNested2")
 	rows, err := q.conn.Query(ctx, paramNested2SQL, image)
 	if err != nil {
 		return ProductImageType{}, fmt.Errorf("query ParamNested2: %w", q.errWrap(err))
@@ -167,12 +167,12 @@ const paramNested2ArraySQL = `SELECT $1::product_image_type[];`
 
 // ParamNested2Array implements Querier.ParamNested2Array.
 func (q *DBQuerier) ParamNested2Array(ctx context.Context, images []ProductImageType) ([]ProductImageType, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "ParamNested2Array")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "ParamNested2Array")
 	rows, err := q.conn.Query(ctx, paramNested2ArraySQL, images)
 	if err != nil {
 		return nil, fmt.Errorf("query ParamNested2Array: %w", q.errWrap(err))
@@ -185,12 +185,12 @@ const paramNested3SQL = `SELECT $1::product_image_set_type;`
 
 // ParamNested3 implements Querier.ParamNested3.
 func (q *DBQuerier) ParamNested3(ctx context.Context, imageSet ProductImageSetType) (ProductImageSetType, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "ParamNested3")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return ProductImageSetType{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return ProductImageSetType{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "ParamNested3")
 	rows, err := q.conn.Query(ctx, paramNested3SQL, imageSet)
 	if err != nil {
 		return ProductImageSetType{}, fmt.Errorf("query ParamNested3: %w", q.errWrap(err))

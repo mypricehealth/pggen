@@ -75,7 +75,7 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
 
     err := registerTypes(ctx, q.conn)
     if err != nil {
-        return {{ $q.EmitZeroResult }}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+        return {{ $q.EmitZeroResult }}, q.errWrap(err)
     }
 {{- if $q.Executable }}
 	cmdTag, err := q.conn.Exec(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})

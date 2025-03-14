@@ -64,7 +64,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -85,12 +85,12 @@ const getBoolsSQL = `SELECT $1::boolean[];`
 
 // GetBools implements Querier.GetBools.
 func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "GetBools")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "GetBools")
 	rows, err := q.conn.Query(ctx, getBoolsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetBools: %w", q.errWrap(err))
@@ -103,12 +103,12 @@ const getOneTimestampSQL = `SELECT $1::timestamp;`
 
 // GetOneTimestamp implements Querier.GetOneTimestamp.
 func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time.Time, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "GetOneTimestamp")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "GetOneTimestamp")
 	rows, err := q.conn.Query(ctx, getOneTimestampSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetOneTimestamp: %w", q.errWrap(err))
@@ -122,12 +122,12 @@ FROM unnest($1::timestamptz[]);`
 
 // GetManyTimestamptzs implements Querier.GetManyTimestamptzs.
 func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) ([]*time.Time, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamptzs")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamptzs")
 	rows, err := q.conn.Query(ctx, getManyTimestamptzsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetManyTimestamptzs: %w", q.errWrap(err))
@@ -141,12 +141,12 @@ FROM unnest($1::timestamp[]);`
 
 // GetManyTimestamps implements Querier.GetManyTimestamps.
 func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([]*time.Time, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamps")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamps")
 	rows, err := q.conn.Query(ctx, getManyTimestampsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetManyTimestamps: %w", q.errWrap(err))

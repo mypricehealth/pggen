@@ -67,7 +67,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -88,12 +88,12 @@ const countAuthorsSQL = `SELECT count(*) FROM author;`
 
 // CountAuthors implements Querier.CountAuthors.
 func (q *DBQuerier) CountAuthors(ctx context.Context) (*int, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "CountAuthors")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "CountAuthors")
 	rows, err := q.conn.Query(ctx, countAuthorsSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query CountAuthors: %w", q.errWrap(err))
@@ -113,12 +113,12 @@ type FindAuthorByIDRow struct {
 
 // FindAuthorByID implements Querier.FindAuthorByID.
 func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAuthorByIDRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return FindAuthorByIDRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return FindAuthorByIDRow{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
 	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, authorID)
 	if err != nil {
 		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", q.errWrap(err))
@@ -138,12 +138,12 @@ type InsertAuthorParams struct {
 
 // InsertAuthor implements Querier.InsertAuthor.
 func (q *DBQuerier) InsertAuthor(ctx context.Context, params InsertAuthorParams) (int32, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return 0, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return 0, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
 	rows, err := q.conn.Query(ctx, insertAuthorSQL, params.FirstName, params.LastName)
 	if err != nil {
 		return 0, fmt.Errorf("query InsertAuthor: %w", q.errWrap(err))
@@ -166,12 +166,12 @@ type DeleteAuthorsByFullNameParams struct {
 
 // DeleteAuthorsByFullName implements Querier.DeleteAuthorsByFullName.
 func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, params DeleteAuthorsByFullNameParams) (pgconn.CommandTag, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return pgconn.CommandTag{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", q.errWrap(err))

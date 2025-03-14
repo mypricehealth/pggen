@@ -59,7 +59,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -81,12 +81,12 @@ VALUES ($1, crypt($2, gen_salt('bf')));`
 
 // CreateUser implements Querier.CreateUser.
 func (q *DBQuerier) CreateUser(ctx context.Context, email string, password string) (pgconn.CommandTag, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "CreateUser")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return pgconn.CommandTag{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return pgconn.CommandTag{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "CreateUser")
 	cmdTag, err := q.conn.Exec(ctx, createUserSQL, email, password)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query CreateUser: %w", q.errWrap(err))
@@ -104,12 +104,12 @@ type FindUserRow struct {
 
 // FindUser implements Querier.FindUser.
 func (q *DBQuerier) FindUser(ctx context.Context, email string) (FindUserRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindUser")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return FindUserRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return FindUserRow{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "FindUser")
 	rows, err := q.conn.Query(ctx, findUserSQL, email)
 	if err != nil {
 		return FindUserRow{}, fmt.Errorf("query FindUser: %w", q.errWrap(err))

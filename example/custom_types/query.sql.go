@@ -62,7 +62,7 @@ func registerTypes(ctx context.Context, conn genericConn) error {
 		for _, typ := range typesToRegister {
 			dt, err := conn.LoadType(ctx, typ)
 			if err != nil {
-				registerErr = err
+				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
 				return
 			}
 			typeMap.RegisterType(dt)
@@ -88,12 +88,12 @@ type CustomTypesRow struct {
 
 // CustomTypes implements Querier.CustomTypes.
 func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "CustomTypes")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return CustomTypesRow{}, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return CustomTypesRow{}, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "CustomTypes")
 	rows, err := q.conn.Query(ctx, customTypesSQL)
 	if err != nil {
 		return CustomTypesRow{}, fmt.Errorf("query CustomTypes: %w", q.errWrap(err))
@@ -106,12 +106,12 @@ const customMyIntSQL = `SELECT '5'::my_int as int5;`
 
 // CustomMyInt implements Querier.CustomMyInt.
 func (q *DBQuerier) CustomMyInt(ctx context.Context) (int, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "CustomMyInt")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return 0, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return 0, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "CustomMyInt")
 	rows, err := q.conn.Query(ctx, customMyIntSQL)
 	if err != nil {
 		return 0, fmt.Errorf("query CustomMyInt: %w", q.errWrap(err))
@@ -124,12 +124,12 @@ const intArraySQL = `SELECT ARRAY ['5', '6', '7']::int[] as ints;`
 
 // IntArray implements Querier.IntArray.
 func (q *DBQuerier) IntArray(ctx context.Context) ([][]int32, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "IntArray")
+
 	err := registerTypes(ctx, q.conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering types failed: %w", q.errWrap(err))
+		return nil, q.errWrap(err)
 	}
-
-	ctx = context.WithValue(ctx, QueryName{}, "IntArray")
 	rows, err := q.conn.Query(ctx, intArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query IntArray: %w", q.errWrap(err))
