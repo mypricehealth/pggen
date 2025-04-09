@@ -215,7 +215,10 @@ func parseQueries(srcPath string, inferrer *pginfer.Inferrer) (codegen.QueryFile
 			srcQueries = append(srcQueries, query)
 
 			if query.ResultKind == ast.ResultKindSetup {
-				inferrer.RunSetup(query.PreparedSQL)
+				_, err := inferrer.RunSetup(query.PreparedSQL)
+				if err != nil {
+					return codegen.QueryFile{}, fmt.Errorf("could not run setup for %s: %w", query.Name, err)
+				}
 			}
 		default:
 			return codegen.QueryFile{}, fmt.Errorf("unhandled query ast type: %T", query)

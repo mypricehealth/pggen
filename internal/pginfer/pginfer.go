@@ -94,17 +94,17 @@ func (inf *Inferrer) InferTypes(query *ast.SourceQuery) (TypedQuery, error) {
 	if err != nil {
 		return TypedQuery{}, fmt.Errorf("infer output types for query: %w", err)
 	}
-	if query.ResultKind != ast.ResultKindExec && query.ResultKind != ast.ResultKindSetup {
+	if query.ResultKind != ast.ResultKindExec && query.ResultKind != ast.ResultKindSetup && query.ResultKind != ast.ResultKindString {
 		if len(outputs) == 0 {
 			return TypedQuery{}, fmt.Errorf(
 				"query %s has incompatible result kind %s; the query doesn't return any columns; "+
-					"use :exec or :setup if the query shouldn't return any columns",
+					"use :exec, :setup, or :string if the query shouldn't return any columns",
 				query.Name, query.ResultKind)
 		}
 		if countVoids(outputs) == len(outputs) {
 			return TypedQuery{}, fmt.Errorf(
 				"query %s has incompatible result kind %s; the query only has void columns; "+
-					"use :exec or :setup if the query shouldn't return any columns",
+					"use :exec, :setup, or :string if the query shouldn't return any columns",
 				query.Name, query.ResultKind)
 		}
 	}
@@ -126,52 +126,20 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	// The final statement description is used for the output, if any.
-	statements := make([]*pgconn.StatementDescription, 0, len(query.ContiguousArgsSQL))
-
 	tx, err := inf.conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin transaction failure: %w", err)
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 
-	for i, sql := range query.ContiguousArgsSQL {
-		stmtDesc, err := inf.prepareQuery(ctx, sql.SQL, query.ResultKind)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to prepare query: %w", err)
-		}
+	needsOutputPlan := query.ResultKind == ast.ResultKindMany || query.ResultKind == ast.ResultKindOne || query.ResultKind == ast.ResultKindRows
 
-		if len(stmtDesc.ParamOIDs) != sql.UniqueArgs {
-			fundamentalError := fmt.Errorf("%d unique args are written in the query but got oids for %d", sql.UniqueArgs, len(stmtDesc.ParamOIDs))
-			if len(stmtDesc.ParamOIDs) < sql.UniqueArgs {
-				return nil, nil, fmt.Errorf("%s, this likely indicates that an argument can be parsed but not bound, for example `CREATE VIEW pggen.arg('view_name') AS (SELECT 1)` would result in this error", fundamentalError)
-			}
-
-			return nil, nil, fmt.Errorf("%s, this either indicates a bug or a positional parameter being used directly in a query instead of `pggen.arg('arg_name')`", fundamentalError)
-		}
-
-		statements = append(statements, stmtDesc)
-
-		// If this is the last statement, there's no need to actually execute it.
-		if i == len(query.ContiguousArgsSQL)-1 {
-			continue
-		}
-
-		// Execute the query so that side effects that the next query may depend on are applied.
-		paramValues := make([][]byte, len(sql.Args))
-		paramFormats := make([]int16, len(sql.Args))
-		for i := range len(sql.Args) {
-			paramValues[i] = nil
-		}
-
-		rr := inf.conn.PgConn().ExecPrepared(ctx, stmtDesc.Name, paramValues, paramFormats, nil)
-		_, err = rr.Close()
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to execute prepared query: %w", err)
-		}
+	statementsData, err := inf.getStatementsData(ctx, query, needsOutputPlan)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get statement data: %w", err)
 	}
 
-	inputParams, err := inf.getInputParamTypes(statements, query)
+	inputParams, err := inf.getInputParamTypes(statementsData.inputStatements, query)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get inputs: %w", err)
 	}
@@ -181,9 +149,9 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	}
 
 	var outputColumns []OutputColumn
-	if len(statements) > 0 {
+	if len(statementsData.inputStatements) > 0 {
 		// The output is based upon the final statement.
-		finalStatement := statements[len(statements)-1]
+		finalStatement := statementsData.inputStatements[len(statementsData.inputStatements)-1]
 
 		// Resolve type names of output column data type OIDs.
 		outputOIDs := make([]uint32, len(finalStatement.Fields))
@@ -196,7 +164,7 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 		}
 
 		// Output nullability.
-		nullables, err := inf.inferOutputNullability(query, finalStatement.Fields)
+		nullables, err := inf.inferOutputNullability(query, finalStatement.Fields, statementsData.outputPlan)
 		if err != nil {
 			return nil, nil, fmt.Errorf("infer output type nullability: %w", err)
 		}
@@ -216,6 +184,84 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	}
 
 	return inputParams, outputColumns, nil
+}
+
+type statementsData struct {
+	inputStatements []*pgconn.StatementDescription
+	outputPlan      Plan
+}
+
+func (inf *Inferrer) getStatementsData(ctx context.Context, query *ast.SourceQuery, needsOutputPlan bool) (statementsData, error) {
+	// The final statement description is used for the output, if any.
+	inputStatements := make([]*pgconn.StatementDescription, 0, len(query.ContiguousArgsSQL))
+	var outputPlan Plan
+
+	for i, sql := range query.ContiguousArgsSQL {
+		stmtDesc, err := inf.prepareQuery(ctx, sql.SQL, query.ResultKind)
+		if err != nil {
+			return statementsData{}, fmt.Errorf("failed to prepare query: %w", err)
+		}
+
+		if len(stmtDesc.ParamOIDs) != sql.UniqueArgs {
+			fundamentalError := fmt.Errorf("%d unique args are written in the query but got oids for %d", sql.UniqueArgs, len(stmtDesc.ParamOIDs))
+			if len(stmtDesc.ParamOIDs) < sql.UniqueArgs {
+				return statementsData{}, fmt.Errorf("%s, this likely indicates that an argument can be parsed but not bound, for example `CREATE VIEW pggen.arg('view_name') AS (SELECT 1)` would result in this error", fundamentalError)
+			}
+
+			return statementsData{}, fmt.Errorf("%s, this either indicates a bug or a positional parameter being used directly in a query instead of `pggen.arg('arg_name')`", fundamentalError)
+		}
+
+		inputStatements = append(inputStatements, stmtDesc)
+
+		shouldExecute := true
+
+		isLastStatement := i == len(query.ContiguousArgsSQL)-1
+
+		// If this is the last statement, there's no need to actually execute it.
+		if isLastStatement {
+			shouldExecute = false
+		}
+
+		if isLastStatement {
+			if needsOutputPlan {
+				plan, err := inf.explainQuery(sql.SQL, len(sql.Args))
+				if err != nil {
+					return statementsData{}, fmt.Errorf("could not explain query: %w", err)
+				}
+
+				outputPlan = plan
+			}
+		}
+
+		if shouldExecute {
+			err := inf.execute(ctx, stmtDesc, sql)
+			if err != nil {
+				return statementsData{}, fmt.Errorf("could not execute query: %w", err)
+			}
+		}
+
+	}
+
+	data := statementsData{inputStatements, outputPlan}
+
+	return data, nil
+}
+
+// Executes the query so that side effects that the next query may depend on are applied.
+func (inf *Inferrer) execute(ctx context.Context, stmtDesc *pgconn.StatementDescription, sql ast.ContiguousArgsSQL) error {
+	paramValues := make([][]byte, len(sql.Args))
+	paramFormats := make([]int16, len(sql.Args))
+	for i := range len(sql.Args) {
+		paramValues[i] = nil
+	}
+
+	rr := inf.conn.PgConn().ExecPrepared(ctx, stmtDesc.Name, paramValues, paramFormats, nil)
+	_, err := rr.Close()
+	if err != nil {
+		return fmt.Errorf("failed to execute prepared query: %w", err)
+	}
+
+	return nil
 }
 
 func (inf *Inferrer) prepareQuery(ctx context.Context, sql string, resultKind ast.ResultKind) (*pgconn.StatementDescription, error) {
@@ -359,13 +405,9 @@ func (inf *Inferrer) getInputParamTypes(statements []*pgconn.StatementDescriptio
 
 // inferOutputNullability infers which of the output columns produced by the
 // query and described by descs can be null.
-func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgconn.FieldDescription) ([]bool, error) {
+func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgconn.FieldDescription, outputPlan Plan) ([]bool, error) {
 	if len(descs) == 0 {
 		return nil, nil
-	}
-	plan, err := inf.explainQuery(query)
-	if err != nil {
-		return nil, err
 	}
 
 	columnKeys := make([]pg.ColumnKey, len(descs))
@@ -390,12 +432,12 @@ func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgco
 		nullables[i] = true // assume nullable until proven otherwise
 	}
 	for i, col := range cols {
-		if i == len(plan.Outputs) {
+		if i == len(outputPlan.Outputs) {
 			// plan.Outputs might not have the same output because the top level node
 			// joins child outputs like with append.
 			break
 		}
-		nullables[i] = isColNullable(query, plan, plan.Outputs[i], col)
+		nullables[i] = isColNullable(query, outputPlan, outputPlan.Outputs[i], col)
 	}
 	return nullables, nil
 }

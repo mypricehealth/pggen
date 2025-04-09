@@ -345,7 +345,7 @@ func (tq TemplatedQuery) EmitRowToFunc() (string, error) {
 // type is []FindAuthorsRow.
 func (tq TemplatedQuery) EmitSingularResultType() string {
 	if tq.ResultKind == ast.ResultKindString {
-		// This indicates a bug. This should have been caught this earlier.
+		// This indicates a bug. This should have been caught earlier.
 		panic(fmt.Errorf("unhandled EmitSingularResultType for %s query", tq.ResultKind))
 	}
 

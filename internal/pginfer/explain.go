@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/mypricehealth/pggen/internal/ast"
 )
 
 // PlanType is the top-level node plan type that Postgres plans for executing
@@ -20,25 +19,22 @@ const (
 
 // Plan is the plan output from an EXPLAIN query.
 type Plan struct {
-	Type     PlanType
-	Relation string   // target relation if any
-	Outputs  []string // the output expressions if any
+	Type      PlanType `json:"Node Type"`
+	Operation string   `json:"Operation"`     // the operation, set for `ModifyTable`
+	Relation  string   `json:"Relation Name"` // target relation if any
+	Outputs   []string `json:"Output"`        // the output expressions if any
 }
 
 type ExplainQueryResultRow struct {
-	Plan            map[string]interface{} `json:"Plan,omitempty"`
-	QueryIdentifier *uint64                `json:"QueryIdentifier,omitempty"`
+	Plan            Plan    `json:"Plan,omitempty"`
+	QueryIdentifier *uint64 `json:"QueryIdentifier,omitempty"`
 }
 
 // explainQuery executes explain plan to get the node plan type and the format
 // of the output columns.
-func (inf *Inferrer) explainQuery(query *ast.SourceQuery) (Plan, error) {
+func (inf *Inferrer) explainQuery(query string, argCount int) (Plan, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
-
-	if len(query.ContiguousArgsSQL) == 0 {
-		return Plan{}, fmt.Errorf("no sql to explain")
-	}
 
 	tx, err := inf.conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -46,56 +42,16 @@ func (inf *Inferrer) explainQuery(query *ast.SourceQuery) (Plan, error) {
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 
-	startingSQL, lastSQL := query.ContiguousArgsSQL[:len(query.ContiguousArgsSQL)-1], query.ContiguousArgsSQL[len(query.ContiguousArgsSQL)-1]
-	for _, sql := range startingSQL {
-		_, err := inf.conn.Exec(ctx, sql.SQL, createParamArgs(len(sql.Args))...)
-		if err != nil {
-			return Plan{}, fmt.Errorf("execute prepared query: %w", err)
-		}
-	}
-
-	explainQuery := `EXPLAIN (VERBOSE, FORMAT JSON) ` + lastSQL.SQL
-	row := inf.conn.QueryRow(ctx, explainQuery, createParamArgs(len(lastSQL.Args))...)
+	explainQuery := `EXPLAIN (VERBOSE, FORMAT JSON) ` + query
+	row := inf.conn.QueryRow(ctx, explainQuery, createParamArgs(argCount)...)
 	explain := make([]ExplainQueryResultRow, 0, 1)
 	if err := row.Scan(&explain); err != nil {
 		return Plan{}, fmt.Errorf("explain prepared query: %w", err)
 	}
-	if len(explain) == 0 {
-		return Plan{}, fmt.Errorf("no explain output")
-	}
-	plan := explain[0].Plan
-	if len(plan) == 0 {
-		return Plan{}, fmt.Errorf("explain output had no 'Plan' node")
+
+	if len(explain) != 1 {
+		return Plan{}, fmt.Errorf("expected 1 plan but got %d plans", len(explain))
 	}
 
-	// Node type
-	node, ok := plan["Node Type"]
-	if !ok {
-		return Plan{}, fmt.Errorf("explain output had no 'Plan[Node Type]' node")
-	}
-	strNode, ok := node.(string)
-	if !ok {
-		return Plan{}, fmt.Errorf("explain output 'Plan[Node Type]' is not string; got type %T for value %v", node, node)
-	}
-
-	// Relation
-	relation := plan["Relation Name"]
-	relationStr, _ := relation.(string)
-
-	// Outputs
-	rawOuts := plan["Output"]
-	outs, _ := rawOuts.([]interface{})
-	strOuts := make([]string, len(outs))
-	for i, out := range outs {
-		out, ok := out.(string)
-		if !ok {
-			return Plan{}, fmt.Errorf("explain output 'Plan.Output[%d]' was not a string; got type %T for value %v", i, out, out)
-		}
-		strOuts[i] = out
-	}
-	return Plan{
-		Type:     PlanType(strNode),
-		Relation: relationStr,
-		Outputs:  strOuts,
-	}, nil
+	return explain[0].Plan, nil
 }

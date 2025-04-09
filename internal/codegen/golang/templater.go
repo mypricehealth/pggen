@@ -175,7 +175,7 @@ func (tm Templater) templateFile(file codegen.QueryFile, isLeader bool) (Templat
 
 		nonVoidCols := removeVoidColumns(outputs)
 		resultKind := query.ResultKind
-		if len(nonVoidCols) == 0 {
+		if len(nonVoidCols) == 0 && resultKind != ast.ResultKindString {
 			resultKind = ast.ResultKindExec
 		}
 
