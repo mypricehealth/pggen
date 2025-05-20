@@ -45,12 +45,12 @@ func FetchColumns(conn *pgx.Conn, keys []ColumnKey) ([]Column, error) {
 	// Try cache first.
 	uncachedKeys := make([]ColumnKey, 0, len(keys))
 	columnsMu.Lock()
+	defer columnsMu.Unlock()
 	for _, key := range keys {
 		if _, ok := columnCache[key]; !ok && key.TableOID > 0 {
 			uncachedKeys = append(uncachedKeys, key)
 		}
 	}
-	columnsMu.Unlock()
 	if len(uncachedKeys) == 0 {
 		return fetchCachedColumns(keys)
 	}
@@ -102,10 +102,9 @@ func FetchColumns(conn *pgx.Conn, keys []ColumnKey) ([]Column, error) {
 	return fetchCachedColumns(keys)
 }
 
+// columnsMu must be held while calling
 func fetchCachedColumns(keys []ColumnKey) ([]Column, error) {
 	cols := make([]Column, 0, len(keys))
-	columnsMu.Lock()
-	defer columnsMu.Unlock()
 	for _, key := range keys {
 		col, ok := columnCache[key]
 		// Ignore columns not directly backed by a table.
