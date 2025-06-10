@@ -91,10 +91,7 @@ func Generate(opts GenerateOptions) (mErr error) {
 	defer errs.Capture(&mErr, cleanup, "close postgres connection")
 
 	// Parse queries.
-	inferrer, err := pginfer.NewInferrer(ctx, pgConn)
-	if err != nil {
-		return fmt.Errorf("new inferrer: %w", err)
-	}
+	inferrer := pginfer.NewInferrer(pgConn)
 
 	queryFiles, err := parseQueryFiles(opts.QueryFiles, inferrer)
 	if err != nil {

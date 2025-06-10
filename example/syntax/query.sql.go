@@ -91,18 +91,13 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
-	err := registerTypes(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-
+func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}, nil
+	}
 }
 
 // UnnamedEnum123 represents the Postgres enum "123".
@@ -150,6 +145,11 @@ const backtickSQL = "SELECT '`';"
 // Backtick implements Querier.Backtick.
 func (q *DBQuerier) Backtick(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Backtick")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, backtickSQL)
 	if err != nil {
 		return "", fmt.Errorf("query Backtick: %w", q.errWrap(err))
@@ -188,7 +188,14 @@ func (q *QueuedBacktick) runOnResult(result string) error {
 }
 
 // Backtick implements Batcher.Backtick.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueBacktick(batch Batcher) *QueuedBacktick {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedBacktick{}
 
 	queuedQuery := batch.Queue(backtickSQL)
@@ -213,6 +220,11 @@ const backtickQuoteBacktickSQL = "SELECT '`\"`';"
 // BacktickQuoteBacktick implements Querier.BacktickQuoteBacktick.
 func (q *DBQuerier) BacktickQuoteBacktick(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickQuoteBacktick")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, backtickQuoteBacktickSQL)
 	if err != nil {
 		return "", fmt.Errorf("query BacktickQuoteBacktick: %w", q.errWrap(err))
@@ -251,7 +263,14 @@ func (q *QueuedBacktickQuoteBacktick) runOnResult(result string) error {
 }
 
 // BacktickQuoteBacktick implements Batcher.BacktickQuoteBacktick.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickQuoteBacktick(batch Batcher) *QueuedBacktickQuoteBacktick {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedBacktickQuoteBacktick{}
 
 	queuedQuery := batch.Queue(backtickQuoteBacktickSQL)
@@ -276,6 +295,11 @@ const backtickNewlineSQL = "SELECT '`\n';"
 // BacktickNewline implements Querier.BacktickNewline.
 func (q *DBQuerier) BacktickNewline(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickNewline")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, backtickNewlineSQL)
 	if err != nil {
 		return "", fmt.Errorf("query BacktickNewline: %w", q.errWrap(err))
@@ -314,7 +338,14 @@ func (q *QueuedBacktickNewline) runOnResult(result string) error {
 }
 
 // BacktickNewline implements Batcher.BacktickNewline.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickNewline(batch Batcher) *QueuedBacktickNewline {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedBacktickNewline{}
 
 	queuedQuery := batch.Queue(backtickNewlineSQL)
@@ -339,6 +370,11 @@ const backtickDoubleQuoteSQL = "SELECT '`\"';"
 // BacktickDoubleQuote implements Querier.BacktickDoubleQuote.
 func (q *DBQuerier) BacktickDoubleQuote(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickDoubleQuote")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, backtickDoubleQuoteSQL)
 	if err != nil {
 		return "", fmt.Errorf("query BacktickDoubleQuote: %w", q.errWrap(err))
@@ -377,7 +413,14 @@ func (q *QueuedBacktickDoubleQuote) runOnResult(result string) error {
 }
 
 // BacktickDoubleQuote implements Batcher.BacktickDoubleQuote.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickDoubleQuote(batch Batcher) *QueuedBacktickDoubleQuote {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedBacktickDoubleQuote{}
 
 	queuedQuery := batch.Queue(backtickDoubleQuoteSQL)
@@ -402,6 +445,11 @@ const backtickBackslashNSQL = "SELECT '`\\n';"
 // BacktickBackslashN implements Querier.BacktickBackslashN.
 func (q *DBQuerier) BacktickBackslashN(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickBackslashN")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, backtickBackslashNSQL)
 	if err != nil {
 		return "", fmt.Errorf("query BacktickBackslashN: %w", q.errWrap(err))
@@ -440,7 +488,14 @@ func (q *QueuedBacktickBackslashN) runOnResult(result string) error {
 }
 
 // BacktickBackslashN implements Batcher.BacktickBackslashN.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickBackslashN(batch Batcher) *QueuedBacktickBackslashN {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedBacktickBackslashN{}
 
 	queuedQuery := batch.Queue(backtickBackslashNSQL)
@@ -470,6 +525,11 @@ type IllegalNameSymbolsRow struct {
 // IllegalNameSymbols implements Querier.IllegalNameSymbols.
 func (q *DBQuerier) IllegalNameSymbols(ctx context.Context, helloWorld string) (IllegalNameSymbolsRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "IllegalNameSymbols")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return IllegalNameSymbolsRow{}, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, illegalNameSymbolsSQL, helloWorld)
 	if err != nil {
 		return IllegalNameSymbolsRow{}, fmt.Errorf("query IllegalNameSymbols: %w", q.errWrap(err))
@@ -508,7 +568,14 @@ func (q *QueuedIllegalNameSymbols) runOnResult(result IllegalNameSymbolsRow) err
 }
 
 // IllegalNameSymbols implements Batcher.IllegalNameSymbols.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueIllegalNameSymbols(batch Batcher, helloWorld string) *QueuedIllegalNameSymbols {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedIllegalNameSymbols{}
 
 	queuedQuery := batch.Queue(illegalNameSymbolsSQL, helloWorld)
@@ -533,6 +600,11 @@ const spaceAfterSQL = `SELECT $1;`
 // SpaceAfter implements Querier.SpaceAfter.
 func (q *DBQuerier) SpaceAfter(ctx context.Context, space string) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "SpaceAfter")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, spaceAfterSQL, space)
 	if err != nil {
 		return "", fmt.Errorf("query SpaceAfter: %w", q.errWrap(err))
@@ -571,7 +643,14 @@ func (q *QueuedSpaceAfter) runOnResult(result string) error {
 }
 
 // SpaceAfter implements Batcher.SpaceAfter.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueSpaceAfter(batch Batcher, space string) *QueuedSpaceAfter {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedSpaceAfter{}
 
 	queuedQuery := batch.Queue(spaceAfterSQL, space)
@@ -596,6 +675,11 @@ const badEnumNameSQL = `SELECT 'inconvertible_enum_name'::"123";`
 // BadEnumName implements Querier.BadEnumName.
 func (q *DBQuerier) BadEnumName(ctx context.Context) (UnnamedEnum123, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BadEnumName")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return UnnamedEnum123(""), q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, badEnumNameSQL)
 	if err != nil {
 		return UnnamedEnum123(""), fmt.Errorf("query BadEnumName: %w", q.errWrap(err))
@@ -634,7 +718,14 @@ func (q *QueuedBadEnumName) runOnResult(result UnnamedEnum123) error {
 }
 
 // BadEnumName implements Batcher.BadEnumName.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueBadEnumName(batch Batcher) *QueuedBadEnumName {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedBadEnumName{}
 
 	queuedQuery := batch.Queue(badEnumNameSQL)
@@ -659,6 +750,11 @@ const goKeywordSQL = `SELECT $1::text;`
 // GoKeyword implements Querier.GoKeyword.
 func (q *DBQuerier) GoKeyword(ctx context.Context, go_ string) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GoKeyword")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return "", q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, goKeywordSQL, go_)
 	if err != nil {
 		return "", fmt.Errorf("query GoKeyword: %w", q.errWrap(err))
@@ -697,7 +793,14 @@ func (q *QueuedGoKeyword) runOnResult(result string) error {
 }
 
 // GoKeyword implements Batcher.GoKeyword.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGoKeyword(batch Batcher, go_ string) *QueuedGoKeyword {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGoKeyword{}
 
 	queuedQuery := batch.Queue(goKeywordSQL, go_)

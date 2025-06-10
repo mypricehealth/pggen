@@ -55,18 +55,13 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
-	err := registerTypes(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-
+func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}, nil
+	}
 }
 
 var registerOnce sync.Once
@@ -104,6 +99,11 @@ WHERE path <@ 'Top.Science';`
 // FindTopScienceChildren implements Querier.FindTopScienceChildren.
 func (q *DBQuerier) FindTopScienceChildren(ctx context.Context) ([]pgtype.Text, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildren")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, findTopScienceChildrenSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindTopScienceChildren: %w", q.errWrap(err))
@@ -142,7 +142,14 @@ func (q *QueuedFindTopScienceChildren) runOnResult(result []pgtype.Text) error {
 }
 
 // FindTopScienceChildren implements Batcher.FindTopScienceChildren.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueFindTopScienceChildren(batch Batcher) *QueuedFindTopScienceChildren {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedFindTopScienceChildren{}
 
 	queuedQuery := batch.Queue(findTopScienceChildrenSQL)
@@ -169,6 +176,11 @@ WHERE path <@ 'Top.Science';`
 // FindTopScienceChildrenAgg implements Querier.FindTopScienceChildrenAgg.
 func (q *DBQuerier) FindTopScienceChildrenAgg(ctx context.Context) (pgtype.TextArray, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindTopScienceChildrenAgg")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return TextArray{}, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, findTopScienceChildrenAggSQL)
 	if err != nil {
 		return TextArray{}, fmt.Errorf("query FindTopScienceChildrenAgg: %w", q.errWrap(err))
@@ -207,7 +219,14 @@ func (q *QueuedFindTopScienceChildrenAgg) runOnResult(result pgtype.TextArray) e
 }
 
 // FindTopScienceChildrenAgg implements Batcher.FindTopScienceChildrenAgg.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueFindTopScienceChildrenAgg(batch Batcher) *QueuedFindTopScienceChildrenAgg {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedFindTopScienceChildrenAgg{}
 
 	queuedQuery := batch.Queue(findTopScienceChildrenAggSQL)
@@ -245,6 +264,11 @@ VALUES ('Top'),
 // InsertSampleData implements Querier.InsertSampleData.
 func (q *DBQuerier) InsertSampleData(ctx context.Context) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertSampleData")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return pgconn.CommandTag{}, q.errWrap(err)
+	}
 	cmdTag, err := q.conn.Exec(ctx, insertSampleDataSQL)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertSampleData: %w", q.errWrap(err))
@@ -282,7 +306,14 @@ func (q *QueuedInsertSampleData) runOnResult(result pgconn.CommandTag) error {
 }
 
 // InsertSampleData implements Batcher.InsertSampleData.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueInsertSampleData(batch Batcher) *QueuedInsertSampleData {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedInsertSampleData{}
 
 	queuedQuery := batch.Queue(insertSampleDataSQL)
@@ -317,6 +348,11 @@ type FindLtreeInputRow struct {
 // FindLtreeInput implements Querier.FindLtreeInput.
 func (q *DBQuerier) FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inLtreeArray []string) (FindLtreeInputRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindLtreeInput")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return FindLtreeInputRow{}, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, findLtreeInputSQL, inLtree, inLtreeArray)
 	if err != nil {
 		return FindLtreeInputRow{}, fmt.Errorf("query FindLtreeInput: %w", q.errWrap(err))
@@ -355,7 +391,14 @@ func (q *QueuedFindLtreeInput) runOnResult(result FindLtreeInputRow) error {
 }
 
 // FindLtreeInput implements Batcher.FindLtreeInput.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueFindLtreeInput(batch Batcher, inLtree pgtype.Text, inLtreeArray []string) *QueuedFindLtreeInput {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedFindLtreeInput{}
 
 	queuedQuery := batch.Queue(findLtreeInputSQL, inLtree, inLtreeArray)

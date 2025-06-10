@@ -63,18 +63,13 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
-	err := registerTypes(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-
+func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}, nil
+	}
 }
 
 var registerOnce sync.Once
@@ -112,6 +107,11 @@ LIMIT 1;`
 // GenSeries1 implements Querier.GenSeries1.
 func (q *DBQuerier) GenSeries1(ctx context.Context) (*int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeries1")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, genSeries1SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeries1: %w", q.errWrap(err))
@@ -150,7 +150,14 @@ func (q *QueuedGenSeries1) runOnResult(result *int) error {
 }
 
 // GenSeries1 implements Batcher.GenSeries1.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeries1(batch Batcher) *QueuedGenSeries1 {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGenSeries1{}
 
 	queuedQuery := batch.Queue(genSeries1SQL)
@@ -176,6 +183,11 @@ FROM generate_series(0, 2) n;`
 // GenSeries implements Querier.GenSeries.
 func (q *DBQuerier) GenSeries(ctx context.Context) ([]*int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeries")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, genSeriesSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeries: %w", q.errWrap(err))
@@ -214,7 +226,14 @@ func (q *QueuedGenSeries) runOnResult(result []*int) error {
 }
 
 // GenSeries implements Batcher.GenSeries.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeries(batch Batcher) *QueuedGenSeries {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGenSeries{}
 
 	queuedQuery := batch.Queue(genSeriesSQL)
@@ -240,6 +259,11 @@ FROM generate_series(0, 2) n;`
 // GenSeriesArr1 implements Querier.GenSeriesArr1.
 func (q *DBQuerier) GenSeriesArr1(ctx context.Context) ([]int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr1")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, genSeriesArr1SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesArr1: %w", q.errWrap(err))
@@ -278,7 +302,14 @@ func (q *QueuedGenSeriesArr1) runOnResult(result []int) error {
 }
 
 // GenSeriesArr1 implements Batcher.GenSeriesArr1.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeriesArr1(batch Batcher) *QueuedGenSeriesArr1 {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGenSeriesArr1{}
 
 	queuedQuery := batch.Queue(genSeriesArr1SQL)
@@ -304,6 +335,11 @@ FROM generate_series(0, 2) n;`
 // GenSeriesArr implements Querier.GenSeriesArr.
 func (q *DBQuerier) GenSeriesArr(ctx context.Context) ([][]int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesArr")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, genSeriesArrSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesArr: %w", q.errWrap(err))
@@ -342,7 +378,14 @@ func (q *QueuedGenSeriesArr) runOnResult(result [][]int) error {
 }
 
 // GenSeriesArr implements Batcher.GenSeriesArr.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeriesArr(batch Batcher) *QueuedGenSeriesArr {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGenSeriesArr{}
 
 	queuedQuery := batch.Queue(genSeriesArrSQL)
@@ -369,6 +412,11 @@ LIMIT 1;`
 // GenSeriesStr1 implements Querier.GenSeriesStr1.
 func (q *DBQuerier) GenSeriesStr1(ctx context.Context) (*string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr1")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, genSeriesStr1SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesStr1: %w", q.errWrap(err))
@@ -407,7 +455,14 @@ func (q *QueuedGenSeriesStr1) runOnResult(result *string) error {
 }
 
 // GenSeriesStr1 implements Batcher.GenSeriesStr1.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeriesStr1(batch Batcher) *QueuedGenSeriesStr1 {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGenSeriesStr1{}
 
 	queuedQuery := batch.Queue(genSeriesStr1SQL)
@@ -433,6 +488,11 @@ FROM generate_series(0, 2) n;`
 // GenSeriesStr implements Querier.GenSeriesStr.
 func (q *DBQuerier) GenSeriesStr(ctx context.Context) ([]*string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GenSeriesStr")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, genSeriesStrSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query GenSeriesStr: %w", q.errWrap(err))
@@ -471,7 +531,14 @@ func (q *QueuedGenSeriesStr) runOnResult(result []*string) error {
 }
 
 // GenSeriesStr implements Batcher.GenSeriesStr.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeriesStr(batch Batcher) *QueuedGenSeriesStr {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGenSeriesStr{}
 
 	queuedQuery := batch.Queue(genSeriesStrSQL)

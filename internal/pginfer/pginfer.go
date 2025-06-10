@@ -75,16 +75,11 @@ type Inferrer struct {
 
 // NewInferrer infers information about a query by running the query on
 // Postgres and extracting information from the catalog tables.
-func NewInferrer(ctx context.Context, conn *pgx.Conn) (*Inferrer, error) {
-	typeFetcher, err := pg.NewTypeFetcher(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-
+func NewInferrer(conn *pgx.Conn) *Inferrer {
 	return &Inferrer{
 		conn:        conn,
-		typeFetcher: typeFetcher,
-	}, nil
+		typeFetcher: pg.NewTypeFetcher(conn),
+	}
 }
 
 func (inf *Inferrer) RunSetup(sql string) (pgconn.CommandTag, error) {

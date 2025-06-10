@@ -14,16 +14,11 @@ type TypeFetcher struct {
 	querier *DBQuerier
 }
 
-func NewTypeFetcher(ctx context.Context, conn *pgx.Conn) (*TypeFetcher, error) {
-	querier, err := NewQuerier(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-
+func NewTypeFetcher(conn *pgx.Conn) *TypeFetcher {
 	return &TypeFetcher{
 		cache:   newTypeCache(),
-		querier: querier,
-	}, nil
+		querier: NewQuerier(conn),
+	}
 }
 
 // FindTypesByOIDs returns a map of a type OID to the Type description. The

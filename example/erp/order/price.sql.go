@@ -23,6 +23,11 @@ type FindOrdersByPriceRow struct {
 // FindOrdersByPrice implements Querier.FindOrdersByPrice.
 func (q *DBQuerier) FindOrdersByPrice(ctx context.Context, minTotal decimal.Decimal) ([]FindOrdersByPriceRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByPrice")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, findOrdersByPriceSQL, minTotal)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByPrice: %w", q.errWrap(err))
@@ -61,7 +66,14 @@ func (q *QueuedFindOrdersByPrice) runOnResult(result []FindOrdersByPriceRow) err
 }
 
 // FindOrdersByPrice implements Batcher.FindOrdersByPrice.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueFindOrdersByPrice(batch Batcher, minTotal decimal.Decimal) *QueuedFindOrdersByPrice {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedFindOrdersByPrice{}
 
 	queuedQuery := batch.Queue(findOrdersByPriceSQL, minTotal)
@@ -93,6 +105,11 @@ type FindOrdersMRRRow struct {
 // FindOrdersMRR implements Querier.FindOrdersMRR.
 func (q *DBQuerier) FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersMRR")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, findOrdersMRRSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersMRR: %w", q.errWrap(err))
@@ -131,7 +148,14 @@ func (q *QueuedFindOrdersMRR) runOnResult(result []FindOrdersMRRRow) error {
 }
 
 // FindOrdersMRR implements Batcher.FindOrdersMRR.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueFindOrdersMRR(batch Batcher) *QueuedFindOrdersMRR {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedFindOrdersMRR{}
 
 	queuedQuery := batch.Queue(findOrdersMRRSQL)

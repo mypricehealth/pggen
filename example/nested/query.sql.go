@@ -47,18 +47,13 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
-	err := registerTypes(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-
+func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}, nil
+	}
 }
 
 // Dimensions represents the Postgres composite type "dimensions".
@@ -125,6 +120,11 @@ const arrayNested2SQL = `SELECT
 // ArrayNested2 implements Querier.ArrayNested2.
 func (q *DBQuerier) ArrayNested2(ctx context.Context) ([]ProductImageType, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ArrayNested2")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, arrayNested2SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query ArrayNested2: %w", q.errWrap(err))
@@ -163,7 +163,14 @@ func (q *QueuedArrayNested2) runOnResult(result []ProductImageType) error {
 }
 
 // ArrayNested2 implements Batcher.ArrayNested2.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueArrayNested2(batch Batcher) *QueuedArrayNested2 {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedArrayNested2{}
 
 	queuedQuery := batch.Queue(arrayNested2SQL)
@@ -196,6 +203,11 @@ const nested3SQL = `SELECT
 // Nested3 implements Querier.Nested3.
 func (q *DBQuerier) Nested3(ctx context.Context) ([]ProductImageSetType, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Nested3")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, nested3SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query Nested3: %w", q.errWrap(err))
@@ -234,7 +246,14 @@ func (q *QueuedNested3) runOnResult(result []ProductImageSetType) error {
 }
 
 // Nested3 implements Batcher.Nested3.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueNested3(batch Batcher) *QueuedNested3 {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedNested3{}
 
 	queuedQuery := batch.Queue(nested3SQL)

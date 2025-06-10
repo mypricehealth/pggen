@@ -69,18 +69,13 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
-	err := registerTypes(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-
+func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}, nil
+	}
 }
 
 var registerOnce sync.Once
@@ -124,6 +119,11 @@ type CreateTenantRow struct {
 // CreateTenant implements Querier.CreateTenant.
 func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (CreateTenantRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CreateTenant")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return CreateTenantRow{}, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, createTenantSQL, key, name)
 	if err != nil {
 		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", q.errWrap(err))
@@ -162,7 +162,14 @@ func (q *QueuedCreateTenant) runOnResult(result CreateTenantRow) error {
 }
 
 // CreateTenant implements Batcher.CreateTenant.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueCreateTenant(batch Batcher, key string, name string) *QueuedCreateTenant {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedCreateTenant{}
 
 	queuedQuery := batch.Queue(createTenantSQL, key, name)
@@ -196,6 +203,11 @@ type FindOrdersByCustomerRow struct {
 // FindOrdersByCustomer implements Querier.FindOrdersByCustomer.
 func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) ([]FindOrdersByCustomerRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByCustomer")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, findOrdersByCustomerSQL, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", q.errWrap(err))
@@ -234,7 +246,14 @@ func (q *QueuedFindOrdersByCustomer) runOnResult(result []FindOrdersByCustomerRo
 }
 
 // FindOrdersByCustomer implements Batcher.FindOrdersByCustomer.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueFindOrdersByCustomer(batch Batcher, customerID int32) *QueuedFindOrdersByCustomer {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedFindOrdersByCustomer{}
 
 	queuedQuery := batch.Queue(findOrdersByCustomerSQL, customerID)
@@ -269,6 +288,11 @@ type FindProductsInOrderRow struct {
 // FindProductsInOrder implements Querier.FindProductsInOrder.
 func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]FindProductsInOrderRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindProductsInOrder")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, findProductsInOrderSQL, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindProductsInOrder: %w", q.errWrap(err))
@@ -307,7 +331,14 @@ func (q *QueuedFindProductsInOrder) runOnResult(result []FindProductsInOrderRow)
 }
 
 // FindProductsInOrder implements Batcher.FindProductsInOrder.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueFindProductsInOrder(batch Batcher, orderID int32) *QueuedFindProductsInOrder {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedFindProductsInOrder{}
 
 	queuedQuery := batch.Queue(findProductsInOrderSQL, orderID)
@@ -347,6 +378,11 @@ type InsertCustomerRow struct {
 // InsertCustomer implements Querier.InsertCustomer.
 func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerParams) (InsertCustomerRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertCustomer")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return InsertCustomerRow{}, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, insertCustomerSQL, params.FirstName, params.LastName, params.Email)
 	if err != nil {
 		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", q.errWrap(err))
@@ -385,7 +421,14 @@ func (q *QueuedInsertCustomer) runOnResult(result InsertCustomerRow) error {
 }
 
 // InsertCustomer implements Batcher.InsertCustomer.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueInsertCustomer(batch Batcher, params InsertCustomerParams) *QueuedInsertCustomer {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedInsertCustomer{}
 
 	queuedQuery := batch.Queue(insertCustomerSQL, params.FirstName, params.LastName, params.Email)
@@ -425,6 +468,11 @@ type InsertOrderRow struct {
 // InsertOrder implements Querier.InsertOrder.
 func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (InsertOrderRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertOrder")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return InsertOrderRow{}, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
 	if err != nil {
 		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", q.errWrap(err))
@@ -463,7 +511,14 @@ func (q *QueuedInsertOrder) runOnResult(result InsertOrderRow) error {
 }
 
 // InsertOrder implements Batcher.InsertOrder.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueInsertOrder(batch Batcher, params InsertOrderParams) *QueuedInsertOrder {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedInsertOrder{}
 
 	queuedQuery := batch.Queue(insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)

@@ -33,8 +33,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 		CREATE DOMAIN us_postal_code AS text;
 	`))
 	defer cleanupFunc()
-	q, err := pg.NewQuerier(context.Background(), conn)
-	require.NoError(t, err)
+	q := pg.NewQuerier(conn)
 
 	deviceTypeOID, err := q.FindOIDByName(context.Background(), "device_type")
 	require.NoError(t, err)
@@ -311,8 +310,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inferrer, err := NewInferrer(context.Background(), conn)
-			require.NoError(t, err)
+			inferrer := NewInferrer(conn)
 
 			args := make([]int, tt.argCount)
 			for i := 0; i < tt.argCount; i++ {
@@ -365,8 +363,7 @@ func TestInferrer_InferTypes_Multi(t *testing.T) {
 	conn, cleanupFunc := pgtest.NewPostgresSchemaString(t, "")
 	defer cleanupFunc()
 
-	inferrer, err := NewInferrer(context.Background(), conn)
-	require.NoError(t, err)
+	inferrer := NewInferrer(conn)
 
 	got, err := inferrer.InferTypes(query)
 	if err != nil {
@@ -429,8 +426,7 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query.Name, func(t *testing.T) {
-			inferrer, err := NewInferrer(context.Background(), conn)
-			require.NoError(t, err)
+			inferrer := NewInferrer(conn)
 
 			got, err := inferrer.InferTypes(tt.query)
 			assert.Equal(t, TypedQuery{}, got, "InferTypes should error and return empty TypedQuery struct")

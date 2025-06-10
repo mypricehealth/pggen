@@ -56,18 +56,13 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
-	err := registerTypes(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-
+func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}, nil
+	}
 }
 
 var registerOnce sync.Once
@@ -103,6 +98,11 @@ const getBoolsSQL = `SELECT $1::boolean[];`
 // GetBools implements Querier.GetBools.
 func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetBools")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, getBoolsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetBools: %w", q.errWrap(err))
@@ -141,7 +141,14 @@ func (q *QueuedGetBools) runOnResult(result []bool) error {
 }
 
 // GetBools implements Batcher.GetBools.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGetBools(batch Batcher, data []bool) *QueuedGetBools {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGetBools{}
 
 	queuedQuery := batch.Queue(getBoolsSQL, data)
@@ -166,6 +173,11 @@ const getOneTimestampSQL = `SELECT $1::timestamp;`
 // GetOneTimestamp implements Querier.GetOneTimestamp.
 func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time.Time, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetOneTimestamp")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, getOneTimestampSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetOneTimestamp: %w", q.errWrap(err))
@@ -204,7 +216,14 @@ func (q *QueuedGetOneTimestamp) runOnResult(result *time.Time) error {
 }
 
 // GetOneTimestamp implements Batcher.GetOneTimestamp.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGetOneTimestamp(batch Batcher, data *time.Time) *QueuedGetOneTimestamp {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGetOneTimestamp{}
 
 	queuedQuery := batch.Queue(getOneTimestampSQL, data)
@@ -230,6 +249,11 @@ FROM unnest($1::timestamptz[]);`
 // GetManyTimestamptzs implements Querier.GetManyTimestamptzs.
 func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) ([]*time.Time, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamptzs")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, getManyTimestamptzsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetManyTimestamptzs: %w", q.errWrap(err))
@@ -268,7 +292,14 @@ func (q *QueuedGetManyTimestamptzs) runOnResult(result []*time.Time) error {
 }
 
 // GetManyTimestamptzs implements Batcher.GetManyTimestamptzs.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGetManyTimestamptzs(batch Batcher, data []time.Time) *QueuedGetManyTimestamptzs {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGetManyTimestamptzs{}
 
 	queuedQuery := batch.Queue(getManyTimestamptzsSQL, data)
@@ -294,6 +325,11 @@ FROM unnest($1::timestamp[]);`
 // GetManyTimestamps implements Querier.GetManyTimestamps.
 func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([]*time.Time, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamps")
+
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return nil, q.errWrap(err)
+	}
 	rows, err := q.conn.Query(ctx, getManyTimestampsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetManyTimestamps: %w", q.errWrap(err))
@@ -332,7 +368,14 @@ func (q *QueuedGetManyTimestamps) runOnResult(result []*time.Time) error {
 }
 
 // GetManyTimestamps implements Batcher.GetManyTimestamps.
+//
+//nolint:contextcheck
 func (q *DBQuerier) QueueGetManyTimestamps(batch Batcher, data []*time.Time) *QueuedGetManyTimestamps {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
 	queued := &QueuedGetManyTimestamps{}
 
 	queuedQuery := batch.Queue(getManyTimestampsSQL, data)
