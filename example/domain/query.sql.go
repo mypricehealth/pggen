@@ -18,6 +18,8 @@ type QueryName struct{}
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
 	DomainOne(ctx context.Context) (string, error)
+
+	QueueDomainOne(batch *pgx.Batch, onResult func(string) error, onError func(err error) error)
 }
 
 var _ Querier = &DBQuerier{}
@@ -36,7 +38,7 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
+// NewQuerier creates a DBQuerier
 func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
@@ -90,4 +92,36 @@ func (q *DBQuerier) DomainOne(ctx context.Context) (string, error) {
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
+}
+
+// DomainOne implements Batcher.DomainOne.
+func (q *DBQuerier) QueueDomainOne(batch *pgx.Batch, onResult func(string) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(domainOneSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }

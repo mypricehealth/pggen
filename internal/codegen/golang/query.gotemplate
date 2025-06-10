@@ -8,7 +8,7 @@ package {{.GoPkg}}
 import (
 {{ range $pkg := .Imports.Get }}	"{{$pkg}}"
 {{ end -}}
-{{- if .IsLeader -}}	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
+{{- if .IsLeader}}	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 {{- "\n" -}}
 {{- end -}}
 )
@@ -22,12 +22,23 @@ type QueryName struct{}
 type Querier interface {
 {{- range $pkgFile := .Pkg.Files -}}
 {{- range $i, $q := $pkgFile.Queries }}
-    {{- if ne $q.ResultKind ":string" }}
-    {{- "\n\t" -}}
+	{{- if ne $q.ResultKind ":string" }}
+	{{- "\n\t" -}}
 	{{- if $q.Doc }}{{ $q.Doc }}	{{ end -}}
 	{{.Name}}(ctx context.Context {{- $q.EmitParams }}) ({{ $q.EmitResultType }}, error)
 	{{- "\n" -}}
-    {{- end -}}
+	{{- end -}}
+{{end -}}
+{{- end -}}
+
+{{- range $pkgFile := .Pkg.Files -}}
+{{- range $i, $q := $pkgFile.Queries }}
+	{{- if ne $q.ResultKind ":string" }}
+	{{- "\n\t" -}}
+	{{- if $q.Doc }}{{ $q.Doc }}	{{ end -}}
+	Queue{{.Name}}(batch *pgx.Batch {{- $q.EmitParams }}, onResult func ({{ $q.EmitResultType }}) error, onError func (err error) error)
+	{{- "\n" -}}
+	{{- end -}}
 {{end -}}
 {{- end -}}
 }
@@ -48,7 +59,7 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
+// NewQuerier creates a DBQuerier
 func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
@@ -73,10 +84,10 @@ const {{ $q.SQLVarName }} = {{ $q.EmitPreparedSQL }}
 func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ $q.EmitResultType }}, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "{{ $q.Name }}")
 
-    err := registerTypes(ctx, q.conn)
-    if err != nil {
-        return {{ $q.EmitZeroResult }}, q.errWrap(err)
-    }
+	err := registerTypes(ctx, q.conn)
+	if err != nil {
+		return {{ $q.EmitZeroResult }}, q.errWrap(err)
+	}
 {{- if $q.Executable }}
 	cmdTag, err := q.conn.Exec(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
@@ -84,7 +95,7 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
 	}
 	return cmdTag, q.errWrap(err)
 {{- else if eq $q.ResultKind ":rows" }}
-    rows, err := q.conn.Query(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
+	rows, err := q.conn.Query(ctx, {{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 	if err != nil {
 		return {{ $q.EmitZeroResult }}, fmt.Errorf("rows query {{ $q.Name }}: %w", q.errWrap(err))
 	}
@@ -96,6 +107,66 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
 	}
 	res, err := {{ $q.EmitCollectionFunc }}(rows, {{ $q.EmitRowToFunc }}[{{ $q.EmitSingularResultType }}])
 	return res, q.errWrap(err)
+{{- end }}
+}
+
+// {{ $q.Name }} implements Batcher.{{ $q.Name }}.
+func (q *DBQuerier) Queue{{ $q.Name }}(batch *pgx.Batch {{- $q.EmitParams }}, onResult func ({{ $q.EmitResultType }}) error, onError func (err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue({{ $q.SQLVarName }} {{- $q.EmitParamNames }})
+
+{{- if $q.Executable }}
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(tag))
+	}
+{{- else }}
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+{{- if eq $q.ResultKind ":rows" }}
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(rows))
+{{- else}}
+		res, err := {{ $q.EmitCollectionFunc }}(rows, {{ $q.EmitRowToFunc }}[{{ $q.EmitSingularResultType }}])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+{{- end }}
+	}
 {{- end }}
 }
 {{- end }}

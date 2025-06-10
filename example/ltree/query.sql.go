@@ -24,6 +24,14 @@ type Querier interface {
 	InsertSampleData(ctx context.Context) (pgconn.CommandTag, error)
 
 	FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inLtreeArray []string) (FindLtreeInputRow, error)
+
+	QueueFindTopScienceChildren(batch *pgx.Batch, onResult func([]pgtype.Text) error, onError func(err error) error)
+
+	QueueFindTopScienceChildrenAgg(batch *pgx.Batch, onResult func(pgtype.TextArray) error, onError func(err error) error)
+
+	QueueInsertSampleData(batch *pgx.Batch, onResult func(pgconn.CommandTag) error, onError func(err error) error)
+
+	QueueFindLtreeInput(batch *pgx.Batch, inLtree pgtype.Text, inLtreeArray []string, onResult func(FindLtreeInputRow) error, onError func(err error) error)
 }
 
 var _ Querier = &DBQuerier{}
@@ -42,7 +50,7 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
+// NewQuerier creates a DBQuerier
 func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
@@ -100,6 +108,38 @@ func (q *DBQuerier) FindTopScienceChildren(ctx context.Context) ([]pgtype.Text, 
 	return res, q.errWrap(err)
 }
 
+// FindTopScienceChildren implements Batcher.FindTopScienceChildren.
+func (q *DBQuerier) QueueFindTopScienceChildren(batch *pgx.Batch, onResult func([]pgtype.Text) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(findTopScienceChildrenSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[pgtype.Text])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
+}
+
 const findTopScienceChildrenAggSQL = `SELECT array_agg(path)
 FROM test
 WHERE path <@ 'Top.Science';`
@@ -118,6 +158,38 @@ func (q *DBQuerier) FindTopScienceChildrenAgg(ctx context.Context) (pgtype.TextA
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[pgtype.TextArray])
 	return res, q.errWrap(err)
+}
+
+// FindTopScienceChildrenAgg implements Batcher.FindTopScienceChildrenAgg.
+func (q *DBQuerier) QueueFindTopScienceChildrenAgg(batch *pgx.Batch, onResult func(pgtype.TextArray) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(findTopScienceChildrenAggSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[pgtype.TextArray])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }
 
 const insertSampleDataSQL = `INSERT INTO test
@@ -150,6 +222,31 @@ func (q *DBQuerier) InsertSampleData(ctx context.Context) (pgconn.CommandTag, er
 	return cmdTag, q.errWrap(err)
 }
 
+// InsertSampleData implements Batcher.InsertSampleData.
+func (q *DBQuerier) QueueInsertSampleData(batch *pgx.Batch, onResult func(pgconn.CommandTag) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(insertSampleDataSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(tag))
+	}
+}
+
 const findLtreeInputSQL = `SELECT
   $1::ltree                   AS ltree,
   -- This won't work, but I'm not quite sure why.
@@ -180,4 +277,36 @@ func (q *DBQuerier) FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inL
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindLtreeInputRow])
 	return res, q.errWrap(err)
+}
+
+// FindLtreeInput implements Batcher.FindLtreeInput.
+func (q *DBQuerier) QueueFindLtreeInput(batch *pgx.Batch, inLtree pgtype.Text, inLtreeArray []string, onResult func(FindLtreeInputRow) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(findLtreeInputSQL, inLtree, inLtreeArray)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindLtreeInputRow])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }

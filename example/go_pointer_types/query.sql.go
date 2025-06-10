@@ -28,6 +28,18 @@ type Querier interface {
 	GenSeriesStr1(ctx context.Context) (*string, error)
 
 	GenSeriesStr(ctx context.Context) ([]*string, error)
+
+	QueueGenSeries1(batch *pgx.Batch, onResult func(*int) error, onError func(err error) error)
+
+	QueueGenSeries(batch *pgx.Batch, onResult func([]*int) error, onError func(err error) error)
+
+	QueueGenSeriesArr1(batch *pgx.Batch, onResult func([]int) error, onError func(err error) error)
+
+	QueueGenSeriesArr(batch *pgx.Batch, onResult func([][]int) error, onError func(err error) error)
+
+	QueueGenSeriesStr1(batch *pgx.Batch, onResult func(*string) error, onError func(err error) error)
+
+	QueueGenSeriesStr(batch *pgx.Batch, onResult func([]*string) error, onError func(err error) error)
 }
 
 var _ Querier = &DBQuerier{}
@@ -46,7 +58,7 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
+// NewQuerier creates a DBQuerier
 func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
@@ -104,6 +116,38 @@ func (q *DBQuerier) GenSeries1(ctx context.Context) (*int, error) {
 	return res, q.errWrap(err)
 }
 
+// GenSeries1 implements Batcher.GenSeries1.
+func (q *DBQuerier) QueueGenSeries1(batch *pgx.Batch, onResult func(*int) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(genSeries1SQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
+}
+
 const genSeriesSQL = `SELECT n
 FROM generate_series(0, 2) n;`
 
@@ -121,6 +165,38 @@ func (q *DBQuerier) GenSeries(ctx context.Context) ([]*int, error) {
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[*int])
 	return res, q.errWrap(err)
+}
+
+// GenSeries implements Batcher.GenSeries.
+func (q *DBQuerier) QueueGenSeries(batch *pgx.Batch, onResult func([]*int) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(genSeriesSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[*int])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }
 
 const genSeriesArr1SQL = `SELECT array_agg(n)
@@ -142,6 +218,38 @@ func (q *DBQuerier) GenSeriesArr1(ctx context.Context) ([]int, error) {
 	return res, q.errWrap(err)
 }
 
+// GenSeriesArr1 implements Batcher.GenSeriesArr1.
+func (q *DBQuerier) QueueGenSeriesArr1(batch *pgx.Batch, onResult func([]int) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(genSeriesArr1SQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
+}
+
 const genSeriesArrSQL = `SELECT array_agg(n)
 FROM generate_series(0, 2) n;`
 
@@ -159,6 +267,38 @@ func (q *DBQuerier) GenSeriesArr(ctx context.Context) ([][]int, error) {
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[[]int])
 	return res, q.errWrap(err)
+}
+
+// GenSeriesArr implements Batcher.GenSeriesArr.
+func (q *DBQuerier) QueueGenSeriesArr(batch *pgx.Batch, onResult func([][]int) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(genSeriesArrSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[[]int])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }
 
 const genSeriesStr1SQL = `SELECT n::text
@@ -181,6 +321,38 @@ func (q *DBQuerier) GenSeriesStr1(ctx context.Context) (*string, error) {
 	return res, q.errWrap(err)
 }
 
+// GenSeriesStr1 implements Batcher.GenSeriesStr1.
+func (q *DBQuerier) QueueGenSeriesStr1(batch *pgx.Batch, onResult func(*string) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(genSeriesStr1SQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*string])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
+}
+
 const genSeriesStrSQL = `SELECT n::text
 FROM generate_series(0, 2) n;`
 
@@ -198,4 +370,36 @@ func (q *DBQuerier) GenSeriesStr(ctx context.Context) ([]*string, error) {
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[*string])
 	return res, q.errWrap(err)
+}
+
+// GenSeriesStr implements Batcher.GenSeriesStr.
+func (q *DBQuerier) QueueGenSeriesStr(batch *pgx.Batch, onResult func([]*string) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(genSeriesStrSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[*string])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }

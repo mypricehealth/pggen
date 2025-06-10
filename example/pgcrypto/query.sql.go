@@ -20,6 +20,10 @@ type Querier interface {
 	CreateUser(ctx context.Context, email string, password string) (pgconn.CommandTag, error)
 
 	FindUser(ctx context.Context, email string) (FindUserRow, error)
+
+	QueueCreateUser(batch *pgx.Batch, email string, password string, onResult func(pgconn.CommandTag) error, onError func(err error) error)
+
+	QueueFindUser(batch *pgx.Batch, email string, onResult func(FindUserRow) error, onError func(err error) error)
 }
 
 var _ Querier = &DBQuerier{}
@@ -38,7 +42,7 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
+// NewQuerier creates a DBQuerier
 func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
@@ -94,6 +98,31 @@ func (q *DBQuerier) CreateUser(ctx context.Context, email string, password strin
 	return cmdTag, q.errWrap(err)
 }
 
+// CreateUser implements Batcher.CreateUser.
+func (q *DBQuerier) QueueCreateUser(batch *pgx.Batch, email string, password string, onResult func(pgconn.CommandTag) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(createUserSQL, email, password)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(tag))
+	}
+}
+
 const findUserSQL = `SELECT email, pass from "user"
 where email = $1;`
 
@@ -116,4 +145,36 @@ func (q *DBQuerier) FindUser(ctx context.Context, email string) (FindUserRow, er
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindUserRow])
 	return res, q.errWrap(err)
+}
+
+// FindUser implements Batcher.FindUser.
+func (q *DBQuerier) QueueFindUser(batch *pgx.Batch, email string, onResult func(FindUserRow) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(findUserSQL, email)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindUserRow])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }

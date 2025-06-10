@@ -24,6 +24,14 @@ type Querier interface {
 	Alpha(ctx context.Context) (string, error)
 
 	Bravo(ctx context.Context) (string, error)
+
+	QueueAlphaNested(batch *pgx.Batch, onResult func(string) error, onError func(err error) error)
+
+	QueueAlphaCompositeArray(batch *pgx.Batch, onResult func([]Alpha) error, onError func(err error) error)
+
+	QueueAlpha(batch *pgx.Batch, onResult func(string) error, onError func(err error) error)
+
+	QueueBravo(batch *pgx.Batch, onResult func(string) error, onError func(err error) error)
 }
 
 var _ Querier = &DBQuerier{}
@@ -42,7 +50,7 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
+// NewQuerier creates a DBQuerier
 func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
@@ -107,6 +115,38 @@ func (q *DBQuerier) AlphaNested(ctx context.Context) (string, error) {
 	return res, q.errWrap(err)
 }
 
+// AlphaNested implements Batcher.AlphaNested.
+func (q *DBQuerier) QueueAlphaNested(batch *pgx.Batch, onResult func(string) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(alphaNestedSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
+}
+
 const alphaCompositeArraySQL = `SELECT ARRAY[ROW('key')]::alpha[];`
 
 // AlphaCompositeArray implements Querier.AlphaCompositeArray.
@@ -123,4 +163,36 @@ func (q *DBQuerier) AlphaCompositeArray(ctx context.Context) ([]Alpha, error) {
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]Alpha])
 	return res, q.errWrap(err)
+}
+
+// AlphaCompositeArray implements Batcher.AlphaCompositeArray.
+func (q *DBQuerier) QueueAlphaCompositeArray(batch *pgx.Batch, onResult func([]Alpha) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(alphaCompositeArraySQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]Alpha])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }

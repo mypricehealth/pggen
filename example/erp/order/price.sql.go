@@ -36,6 +36,38 @@ func (q *DBQuerier) FindOrdersByPrice(ctx context.Context, minTotal decimal.Deci
 	return res, q.errWrap(err)
 }
 
+// FindOrdersByPrice implements Batcher.FindOrdersByPrice.
+func (q *DBQuerier) QueueFindOrdersByPrice(batch *pgx.Batch, minTotal decimal.Decimal, onResult func([]FindOrdersByPriceRow) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(findOrdersByPriceSQL, minTotal)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByPriceRow])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
+}
+
 const findOrdersMRRSQL = `SELECT date_trunc('month', order_date) AS month, sum(order_total) AS order_mrr
 FROM orders
 GROUP BY date_trunc('month', order_date);`
@@ -59,4 +91,36 @@ func (q *DBQuerier) FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, erro
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersMRRRow])
 	return res, q.errWrap(err)
+}
+
+// FindOrdersMRR implements Batcher.FindOrdersMRR.
+func (q *DBQuerier) QueueFindOrdersMRR(batch *pgx.Batch, onResult func([]FindOrdersMRRRow) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(findOrdersMRRSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersMRRRow])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }

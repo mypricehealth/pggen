@@ -31,6 +31,20 @@ type Querier interface {
 	InsertUser(ctx context.Context, userID int, name string) (pgconn.CommandTag, error)
 
 	InsertDevice(ctx context.Context, mac net.HardwareAddr, owner int) (pgconn.CommandTag, error)
+
+	QueueFindDevicesByUser(batch *pgx.Batch, id int, onResult func([]FindDevicesByUserRow) error, onError func(err error) error)
+
+	QueueCompositeUser(batch *pgx.Batch, onResult func([]CompositeUserRow) error, onError func(err error) error)
+
+	QueueCompositeUserOne(batch *pgx.Batch, onResult func(User) error, onError func(err error) error)
+
+	QueueCompositeUserOneTwoCols(batch *pgx.Batch, onResult func(CompositeUserOneTwoColsRow) error, onError func(err error) error)
+
+	QueueCompositeUserMany(batch *pgx.Batch, onResult func([]User) error, onError func(err error) error)
+
+	QueueInsertUser(batch *pgx.Batch, userID int, name string, onResult func(pgconn.CommandTag) error, onError func(err error) error)
+
+	QueueInsertDevice(batch *pgx.Batch, mac net.HardwareAddr, owner int, onResult func(pgconn.CommandTag) error, onError func(err error) error)
 }
 
 var _ Querier = &DBQuerier{}
@@ -49,7 +63,7 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
+// NewQuerier creates a DBQuerier
 func NewQuerier(conn genericConn) *DBQuerier {
 	return &DBQuerier{
 		conn: conn,
@@ -138,6 +152,38 @@ func (q *DBQuerier) FindDevicesByUser(ctx context.Context, id int) ([]FindDevice
 	return res, q.errWrap(err)
 }
 
+// FindDevicesByUser implements Batcher.FindDevicesByUser.
+func (q *DBQuerier) QueueFindDevicesByUser(batch *pgx.Batch, id int, onResult func([]FindDevicesByUserRow) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(findDevicesByUserSQL, id)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindDevicesByUserRow])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
+}
+
 const compositeUserSQL = `SELECT
   d.mac,
   d.type,
@@ -167,6 +213,38 @@ func (q *DBQuerier) CompositeUser(ctx context.Context) ([]CompositeUserRow, erro
 	return res, q.errWrap(err)
 }
 
+// CompositeUser implements Batcher.CompositeUser.
+func (q *DBQuerier) QueueCompositeUser(batch *pgx.Batch, onResult func([]CompositeUserRow) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(compositeUserSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[CompositeUserRow])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
+}
+
 const compositeUserOneSQL = `SELECT ROW (15, 'qux')::"user" AS "user";`
 
 // CompositeUserOne implements Querier.CompositeUserOne.
@@ -183,6 +261,38 @@ func (q *DBQuerier) CompositeUserOne(ctx context.Context) (User, error) {
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[User])
 	return res, q.errWrap(err)
+}
+
+// CompositeUserOne implements Batcher.CompositeUserOne.
+func (q *DBQuerier) QueueCompositeUserOne(batch *pgx.Batch, onResult func(User) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(compositeUserOneSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[User])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }
 
 const compositeUserOneTwoColsSQL = `SELECT 1 AS num, ROW (15, 'qux')::"user" AS "user";`
@@ -208,6 +318,38 @@ func (q *DBQuerier) CompositeUserOneTwoCols(ctx context.Context) (CompositeUserO
 	return res, q.errWrap(err)
 }
 
+// CompositeUserOneTwoCols implements Batcher.CompositeUserOneTwoCols.
+func (q *DBQuerier) QueueCompositeUserOneTwoCols(batch *pgx.Batch, onResult func(CompositeUserOneTwoColsRow) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(compositeUserOneTwoColsSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CompositeUserOneTwoColsRow])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
+}
+
 const compositeUserManySQL = `SELECT ROW (15, 'qux')::"user" AS "user";`
 
 // CompositeUserMany implements Querier.CompositeUserMany.
@@ -224,6 +366,38 @@ func (q *DBQuerier) CompositeUserMany(ctx context.Context) ([]User, error) {
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[User])
 	return res, q.errWrap(err)
+}
+
+// CompositeUserMany implements Batcher.CompositeUserMany.
+func (q *DBQuerier) QueueCompositeUserMany(batch *pgx.Batch, onResult func([]User) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(compositeUserManySQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[User])
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(res))
+	}
 }
 
 const insertUserSQL = `INSERT INTO "user" (id, name)
@@ -244,6 +418,31 @@ func (q *DBQuerier) InsertUser(ctx context.Context, userID int, name string) (pg
 	return cmdTag, q.errWrap(err)
 }
 
+// InsertUser implements Batcher.InsertUser.
+func (q *DBQuerier) QueueInsertUser(batch *pgx.Batch, userID int, name string, onResult func(pgconn.CommandTag) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(insertUserSQL, userID, name)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(tag))
+	}
+}
+
 const insertDeviceSQL = `INSERT INTO device (mac, owner)
 VALUES ($1, $2);`
 
@@ -260,4 +459,29 @@ func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, owne
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
+}
+
+// InsertDevice implements Batcher.InsertDevice.
+func (q *DBQuerier) QueueInsertDevice(batch *pgx.Batch, mac net.HardwareAddr, owner int, onResult func(pgconn.CommandTag) error, onError func(err error) error) {
+	err := registerTypes(context.Background(), q.conn)
+	if err != nil {
+		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
+	}
+
+	queuedQuery := batch.Queue(insertDeviceSQL, mac, owner)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			if onError != nil {
+				return q.errWrap(onError(err))
+			}
+			return q.errWrap(err)
+		}
+
+		if onResult == nil {
+			return nil
+		}
+
+		return q.errWrap(onResult(tag))
+	}
 }
