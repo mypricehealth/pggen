@@ -57,7 +57,7 @@ func (q *QueuedBravo) runOnResult(result string) error {
 }
 
 // Bravo implements Batcher.Bravo.
-func (q *DBQuerier) QueueBravo(batch *pgx.Batch) *QueuedBravo {
+func (q *DBQuerier) QueueBravo(batch Batcher) *QueuedBravo {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

@@ -32,19 +32,19 @@ type Querier interface {
 
 	InsertDevice(ctx context.Context, mac net.HardwareAddr, owner int) (pgconn.CommandTag, error)
 
-	QueueFindDevicesByUser(batch *pgx.Batch, id int) *QueuedFindDevicesByUser
+	QueueFindDevicesByUser(batch Batcher, id int) *QueuedFindDevicesByUser
 
-	QueueCompositeUser(batch *pgx.Batch) *QueuedCompositeUser
+	QueueCompositeUser(batch Batcher) *QueuedCompositeUser
 
-	QueueCompositeUserOne(batch *pgx.Batch) *QueuedCompositeUserOne
+	QueueCompositeUserOne(batch Batcher) *QueuedCompositeUserOne
 
-	QueueCompositeUserOneTwoCols(batch *pgx.Batch) *QueuedCompositeUserOneTwoCols
+	QueueCompositeUserOneTwoCols(batch Batcher) *QueuedCompositeUserOneTwoCols
 
-	QueueCompositeUserMany(batch *pgx.Batch) *QueuedCompositeUserMany
+	QueueCompositeUserMany(batch Batcher) *QueuedCompositeUserMany
 
-	QueueInsertUser(batch *pgx.Batch, userID int, name string) *QueuedInsertUser
+	QueueInsertUser(batch Batcher, userID int, name string) *QueuedInsertUser
 
-	QueueInsertDevice(batch *pgx.Batch, mac net.HardwareAddr, owner int) *QueuedInsertDevice
+	QueueInsertDevice(batch Batcher, mac net.HardwareAddr, owner int) *QueuedInsertDevice
 }
 
 var _ Querier = &DBQuerier{}
@@ -61,6 +61,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -182,7 +186,7 @@ func (q *QueuedFindDevicesByUser) runOnResult(result []FindDevicesByUserRow) err
 }
 
 // FindDevicesByUser implements Batcher.FindDevicesByUser.
-func (q *DBQuerier) QueueFindDevicesByUser(batch *pgx.Batch, id int) *QueuedFindDevicesByUser {
+func (q *DBQuerier) QueueFindDevicesByUser(batch Batcher, id int) *QueuedFindDevicesByUser {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -266,7 +270,7 @@ func (q *QueuedCompositeUser) runOnResult(result []CompositeUserRow) error {
 }
 
 // CompositeUser implements Batcher.CompositeUser.
-func (q *DBQuerier) QueueCompositeUser(batch *pgx.Batch) *QueuedCompositeUser {
+func (q *DBQuerier) QueueCompositeUser(batch Batcher) *QueuedCompositeUser {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -339,7 +343,7 @@ func (q *QueuedCompositeUserOne) runOnResult(result User) error {
 }
 
 // CompositeUserOne implements Batcher.CompositeUserOne.
-func (q *DBQuerier) QueueCompositeUserOne(batch *pgx.Batch) *QueuedCompositeUserOne {
+func (q *DBQuerier) QueueCompositeUserOne(batch Batcher) *QueuedCompositeUserOne {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -417,7 +421,7 @@ func (q *QueuedCompositeUserOneTwoCols) runOnResult(result CompositeUserOneTwoCo
 }
 
 // CompositeUserOneTwoCols implements Batcher.CompositeUserOneTwoCols.
-func (q *DBQuerier) QueueCompositeUserOneTwoCols(batch *pgx.Batch) *QueuedCompositeUserOneTwoCols {
+func (q *DBQuerier) QueueCompositeUserOneTwoCols(batch Batcher) *QueuedCompositeUserOneTwoCols {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -490,7 +494,7 @@ func (q *QueuedCompositeUserMany) runOnResult(result []User) error {
 }
 
 // CompositeUserMany implements Batcher.CompositeUserMany.
-func (q *DBQuerier) QueueCompositeUserMany(batch *pgx.Batch) *QueuedCompositeUserMany {
+func (q *DBQuerier) QueueCompositeUserMany(batch Batcher) *QueuedCompositeUserMany {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -563,7 +567,7 @@ func (q *QueuedInsertUser) runOnResult(result pgconn.CommandTag) error {
 }
 
 // InsertUser implements Batcher.InsertUser.
-func (q *DBQuerier) QueueInsertUser(batch *pgx.Batch, userID int, name string) *QueuedInsertUser {
+func (q *DBQuerier) QueueInsertUser(batch Batcher, userID int, name string) *QueuedInsertUser {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -632,7 +636,7 @@ func (q *QueuedInsertDevice) runOnResult(result pgconn.CommandTag) error {
 }
 
 // InsertDevice implements Batcher.InsertDevice.
-func (q *DBQuerier) QueueInsertDevice(batch *pgx.Batch, mac net.HardwareAddr, owner int) *QueuedInsertDevice {
+func (q *DBQuerier) QueueInsertDevice(batch Batcher, mac net.HardwareAddr, owner int) *QueuedInsertDevice {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

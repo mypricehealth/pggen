@@ -27,15 +27,15 @@ type Querier interface {
 
 	ParamNested3(ctx context.Context, imageSet ProductImageSetType) (ProductImageSetType, error)
 
-	QueueParamArrayInt(batch *pgx.Batch, ints []int) *QueuedParamArrayInt
+	QueueParamArrayInt(batch Batcher, ints []int) *QueuedParamArrayInt
 
-	QueueParamNested1(batch *pgx.Batch, dimensions Dimensions) *QueuedParamNested1
+	QueueParamNested1(batch Batcher, dimensions Dimensions) *QueuedParamNested1
 
-	QueueParamNested2(batch *pgx.Batch, image ProductImageType) *QueuedParamNested2
+	QueueParamNested2(batch Batcher, image ProductImageType) *QueuedParamNested2
 
-	QueueParamNested2Array(batch *pgx.Batch, images []ProductImageType) *QueuedParamNested2Array
+	QueueParamNested2Array(batch Batcher, images []ProductImageType) *QueuedParamNested2Array
 
-	QueueParamNested3(batch *pgx.Batch, imageSet ProductImageSetType) *QueuedParamNested3
+	QueueParamNested3(batch Batcher, imageSet ProductImageSetType) *QueuedParamNested3
 }
 
 var _ Querier = &DBQuerier{}
@@ -52,6 +52,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -167,7 +171,7 @@ func (q *QueuedParamArrayInt) runOnResult(result []int) error {
 }
 
 // ParamArrayInt implements Batcher.ParamArrayInt.
-func (q *DBQuerier) QueueParamArrayInt(batch *pgx.Batch, ints []int) *QueuedParamArrayInt {
+func (q *DBQuerier) QueueParamArrayInt(batch Batcher, ints []int) *QueuedParamArrayInt {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -240,7 +244,7 @@ func (q *QueuedParamNested1) runOnResult(result Dimensions) error {
 }
 
 // ParamNested1 implements Batcher.ParamNested1.
-func (q *DBQuerier) QueueParamNested1(batch *pgx.Batch, dimensions Dimensions) *QueuedParamNested1 {
+func (q *DBQuerier) QueueParamNested1(batch Batcher, dimensions Dimensions) *QueuedParamNested1 {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -313,7 +317,7 @@ func (q *QueuedParamNested2) runOnResult(result ProductImageType) error {
 }
 
 // ParamNested2 implements Batcher.ParamNested2.
-func (q *DBQuerier) QueueParamNested2(batch *pgx.Batch, image ProductImageType) *QueuedParamNested2 {
+func (q *DBQuerier) QueueParamNested2(batch Batcher, image ProductImageType) *QueuedParamNested2 {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -386,7 +390,7 @@ func (q *QueuedParamNested2Array) runOnResult(result []ProductImageType) error {
 }
 
 // ParamNested2Array implements Batcher.ParamNested2Array.
-func (q *DBQuerier) QueueParamNested2Array(batch *pgx.Batch, images []ProductImageType) *QueuedParamNested2Array {
+func (q *DBQuerier) QueueParamNested2Array(batch Batcher, images []ProductImageType) *QueuedParamNested2Array {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -459,7 +463,7 @@ func (q *QueuedParamNested3) runOnResult(result ProductImageSetType) error {
 }
 
 // ParamNested3 implements Batcher.ParamNested3.
-func (q *DBQuerier) QueueParamNested3(batch *pgx.Batch, imageSet ProductImageSetType) *QueuedParamNested3 {
+func (q *DBQuerier) QueueParamNested3(batch Batcher, imageSet ProductImageSetType) *QueuedParamNested3 {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

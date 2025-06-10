@@ -27,15 +27,15 @@ type Querier interface {
 
 	UserEmails(ctx context.Context) (UserEmail, error)
 
-	QueueSearchScreenshots(batch *pgx.Batch, params SearchScreenshotsParams) *QueuedSearchScreenshots
+	QueueSearchScreenshots(batch Batcher, params SearchScreenshotsParams) *QueuedSearchScreenshots
 
-	QueueSearchScreenshotsOneCol(batch *pgx.Batch, params SearchScreenshotsOneColParams) *QueuedSearchScreenshotsOneCol
+	QueueSearchScreenshotsOneCol(batch Batcher, params SearchScreenshotsOneColParams) *QueuedSearchScreenshotsOneCol
 
-	QueueInsertScreenshotBlocks(batch *pgx.Batch, screenshotID int, body string) *QueuedInsertScreenshotBlocks
+	QueueInsertScreenshotBlocks(batch Batcher, screenshotID int, body string) *QueuedInsertScreenshotBlocks
 
-	QueueArraysInput(batch *pgx.Batch, arrays Arrays) *QueuedArraysInput
+	QueueArraysInput(batch Batcher, arrays Arrays) *QueuedArraysInput
 
-	QueueUserEmails(batch *pgx.Batch) *QueuedUserEmails
+	QueueUserEmails(batch Batcher) *QueuedUserEmails
 }
 
 var _ Querier = &DBQuerier{}
@@ -52,6 +52,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -188,7 +192,7 @@ func (q *QueuedSearchScreenshots) runOnResult(result []SearchScreenshotsRow) err
 }
 
 // SearchScreenshots implements Batcher.SearchScreenshots.
-func (q *DBQuerier) QueueSearchScreenshots(batch *pgx.Batch, params SearchScreenshotsParams) *QueuedSearchScreenshots {
+func (q *DBQuerier) QueueSearchScreenshots(batch Batcher, params SearchScreenshotsParams) *QueuedSearchScreenshots {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -274,7 +278,7 @@ func (q *QueuedSearchScreenshotsOneCol) runOnResult(result [][]Blocks) error {
 }
 
 // SearchScreenshotsOneCol implements Batcher.SearchScreenshotsOneCol.
-func (q *DBQuerier) QueueSearchScreenshotsOneCol(batch *pgx.Batch, params SearchScreenshotsOneColParams) *QueuedSearchScreenshotsOneCol {
+func (q *DBQuerier) QueueSearchScreenshotsOneCol(batch Batcher, params SearchScreenshotsOneColParams) *QueuedSearchScreenshotsOneCol {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -360,7 +364,7 @@ func (q *QueuedInsertScreenshotBlocks) runOnResult(result InsertScreenshotBlocks
 }
 
 // InsertScreenshotBlocks implements Batcher.InsertScreenshotBlocks.
-func (q *DBQuerier) QueueInsertScreenshotBlocks(batch *pgx.Batch, screenshotID int, body string) *QueuedInsertScreenshotBlocks {
+func (q *DBQuerier) QueueInsertScreenshotBlocks(batch Batcher, screenshotID int, body string) *QueuedInsertScreenshotBlocks {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -433,7 +437,7 @@ func (q *QueuedArraysInput) runOnResult(result Arrays) error {
 }
 
 // ArraysInput implements Batcher.ArraysInput.
-func (q *DBQuerier) QueueArraysInput(batch *pgx.Batch, arrays Arrays) *QueuedArraysInput {
+func (q *DBQuerier) QueueArraysInput(batch Batcher, arrays Arrays) *QueuedArraysInput {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -506,7 +510,7 @@ func (q *QueuedUserEmails) runOnResult(result UserEmail) error {
 }
 
 // UserEmails implements Batcher.UserEmails.
-func (q *DBQuerier) QueueUserEmails(batch *pgx.Batch) *QueuedUserEmails {
+func (q *DBQuerier) QueueUserEmails(batch Batcher) *QueuedUserEmails {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

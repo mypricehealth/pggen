@@ -50,36 +50,36 @@ type Querier interface {
 	ArrayAggFirstName(ctx context.Context, authorID int32) ([]string, error)
 
 	// FindAuthorById finds one (or zero) authors by ID.
-	QueueFindAuthorByID(batch *pgx.Batch, authorID int32) *QueuedFindAuthorByID
+	QueueFindAuthorByID(batch Batcher, authorID int32) *QueuedFindAuthorByID
 
 	// FindAuthors finds authors by first name.
-	QueueFindAuthors(batch *pgx.Batch, firstName string) *QueuedFindAuthors
+	QueueFindAuthors(batch Batcher, firstName string) *QueuedFindAuthors
 
 	// FindAuthorNames finds one (or zero) authors by ID.
-	QueueFindAuthorNames(batch *pgx.Batch, authorID int32) *QueuedFindAuthorNames
+	QueueFindAuthorNames(batch Batcher, authorID int32) *QueuedFindAuthorNames
 
 	// FindFirstNames finds one (or zero) authors by ID.
-	QueueFindFirstNames(batch *pgx.Batch, authorID int32) *QueuedFindFirstNames
+	QueueFindFirstNames(batch Batcher, authorID int32) *QueuedFindFirstNames
 
 	// DeleteAuthors deletes authors with a first name of "joe".
-	QueueDeleteAuthors(batch *pgx.Batch) *QueuedDeleteAuthors
+	QueueDeleteAuthors(batch Batcher) *QueuedDeleteAuthors
 
 	// DeleteAuthorsByFirstName deletes authors by first name.
-	QueueDeleteAuthorsByFirstName(batch *pgx.Batch, firstName string) *QueuedDeleteAuthorsByFirstName
+	QueueDeleteAuthorsByFirstName(batch Batcher, firstName string) *QueuedDeleteAuthorsByFirstName
 
 	// DeleteAuthorsByFullName deletes authors by the full name.
-	QueueDeleteAuthorsByFullName(batch *pgx.Batch, params DeleteAuthorsByFullNameParams) *QueuedDeleteAuthorsByFullName
+	QueueDeleteAuthorsByFullName(batch Batcher, params DeleteAuthorsByFullNameParams) *QueuedDeleteAuthorsByFullName
 
 	// InsertAuthor inserts an author by name and returns the ID.
-	QueueInsertAuthor(batch *pgx.Batch, firstName string, lastName string) *QueuedInsertAuthor
+	QueueInsertAuthor(batch Batcher, firstName string, lastName string) *QueuedInsertAuthor
 
 	// InsertAuthorSuffix inserts an author by name and suffix and returns the
 	// entire row.
-	QueueInsertAuthorSuffix(batch *pgx.Batch, params InsertAuthorSuffixParams) *QueuedInsertAuthorSuffix
+	QueueInsertAuthorSuffix(batch Batcher, params InsertAuthorSuffixParams) *QueuedInsertAuthorSuffix
 
-	QueueStringAggFirstName(batch *pgx.Batch, authorID int32) *QueuedStringAggFirstName
+	QueueStringAggFirstName(batch Batcher, authorID int32) *QueuedStringAggFirstName
 
-	QueueArrayAggFirstName(batch *pgx.Batch, authorID int32) *QueuedArrayAggFirstName
+	QueueArrayAggFirstName(batch Batcher, authorID int32) *QueuedArrayAggFirstName
 }
 
 var _ Querier = &DBQuerier{}
@@ -96,6 +96,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -191,7 +195,7 @@ func (q *QueuedFindAuthorByID) runOnResult(result FindAuthorByIDRow) error {
 }
 
 // FindAuthorByID implements Batcher.FindAuthorByID.
-func (q *DBQuerier) QueueFindAuthorByID(batch *pgx.Batch, authorID int32) *QueuedFindAuthorByID {
+func (q *DBQuerier) QueueFindAuthorByID(batch Batcher, authorID int32) *QueuedFindAuthorByID {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -271,7 +275,7 @@ func (q *QueuedFindAuthors) runOnResult(result []FindAuthorsRow) error {
 }
 
 // FindAuthors implements Batcher.FindAuthors.
-func (q *DBQuerier) QueueFindAuthors(batch *pgx.Batch, firstName string) *QueuedFindAuthors {
+func (q *DBQuerier) QueueFindAuthors(batch Batcher, firstName string) *QueuedFindAuthors {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -349,7 +353,7 @@ func (q *QueuedFindAuthorNames) runOnResult(result []FindAuthorNamesRow) error {
 }
 
 // FindAuthorNames implements Batcher.FindAuthorNames.
-func (q *DBQuerier) QueueFindAuthorNames(batch *pgx.Batch, authorID int32) *QueuedFindAuthorNames {
+func (q *DBQuerier) QueueFindAuthorNames(batch Batcher, authorID int32) *QueuedFindAuthorNames {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -422,7 +426,7 @@ func (q *QueuedFindFirstNames) runOnResult(result []*string) error {
 }
 
 // FindFirstNames implements Batcher.FindFirstNames.
-func (q *DBQuerier) QueueFindFirstNames(batch *pgx.Batch, authorID int32) *QueuedFindFirstNames {
+func (q *DBQuerier) QueueFindFirstNames(batch Batcher, authorID int32) *QueuedFindFirstNames {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -494,7 +498,7 @@ func (q *QueuedDeleteAuthors) runOnResult(result pgconn.CommandTag) error {
 }
 
 // DeleteAuthors implements Batcher.DeleteAuthors.
-func (q *DBQuerier) QueueDeleteAuthors(batch *pgx.Batch) *QueuedDeleteAuthors {
+func (q *DBQuerier) QueueDeleteAuthors(batch Batcher) *QueuedDeleteAuthors {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -562,7 +566,7 @@ func (q *QueuedDeleteAuthorsByFirstName) runOnResult(result pgconn.CommandTag) e
 }
 
 // DeleteAuthorsByFirstName implements Batcher.DeleteAuthorsByFirstName.
-func (q *DBQuerier) QueueDeleteAuthorsByFirstName(batch *pgx.Batch, firstName string) *QueuedDeleteAuthorsByFirstName {
+func (q *DBQuerier) QueueDeleteAuthorsByFirstName(batch Batcher, firstName string) *QueuedDeleteAuthorsByFirstName {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -640,7 +644,7 @@ func (q *QueuedDeleteAuthorsByFullName) runOnResult(result pgconn.CommandTag) er
 }
 
 // DeleteAuthorsByFullName implements Batcher.DeleteAuthorsByFullName.
-func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch *pgx.Batch, params DeleteAuthorsByFullNameParams) *QueuedDeleteAuthorsByFullName {
+func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch Batcher, params DeleteAuthorsByFullNameParams) *QueuedDeleteAuthorsByFullName {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -711,7 +715,7 @@ func (q *QueuedInsertAuthor) runOnResult(result int32) error {
 }
 
 // InsertAuthor implements Batcher.InsertAuthor.
-func (q *DBQuerier) QueueInsertAuthor(batch *pgx.Batch, firstName string, lastName string) *QueuedInsertAuthor {
+func (q *DBQuerier) QueueInsertAuthor(batch Batcher, firstName string, lastName string) *QueuedInsertAuthor {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -799,7 +803,7 @@ func (q *QueuedInsertAuthorSuffix) runOnResult(result InsertAuthorSuffixRow) err
 }
 
 // InsertAuthorSuffix implements Batcher.InsertAuthorSuffix.
-func (q *DBQuerier) QueueInsertAuthorSuffix(batch *pgx.Batch, params InsertAuthorSuffixParams) *QueuedInsertAuthorSuffix {
+func (q *DBQuerier) QueueInsertAuthorSuffix(batch Batcher, params InsertAuthorSuffixParams) *QueuedInsertAuthorSuffix {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -872,7 +876,7 @@ func (q *QueuedStringAggFirstName) runOnResult(result *string) error {
 }
 
 // StringAggFirstName implements Batcher.StringAggFirstName.
-func (q *DBQuerier) QueueStringAggFirstName(batch *pgx.Batch, authorID int32) *QueuedStringAggFirstName {
+func (q *DBQuerier) QueueStringAggFirstName(batch Batcher, authorID int32) *QueuedStringAggFirstName {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -945,7 +949,7 @@ func (q *QueuedArrayAggFirstName) runOnResult(result []string) error {
 }
 
 // ArrayAggFirstName implements Batcher.ArrayAggFirstName.
-func (q *DBQuerier) QueueArrayAggFirstName(batch *pgx.Batch, authorID int32) *QueuedArrayAggFirstName {
+func (q *DBQuerier) QueueArrayAggFirstName(batch Batcher, authorID int32) *QueuedArrayAggFirstName {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

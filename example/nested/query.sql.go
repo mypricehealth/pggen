@@ -21,9 +21,9 @@ type Querier interface {
 
 	Nested3(ctx context.Context) ([]ProductImageSetType, error)
 
-	QueueArrayNested2(batch *pgx.Batch) *QueuedArrayNested2
+	QueueArrayNested2(batch Batcher) *QueuedArrayNested2
 
-	QueueNested3(batch *pgx.Batch) *QueuedNested3
+	QueueNested3(batch Batcher) *QueuedNested3
 }
 
 var _ Querier = &DBQuerier{}
@@ -40,6 +40,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -159,7 +163,7 @@ func (q *QueuedArrayNested2) runOnResult(result []ProductImageType) error {
 }
 
 // ArrayNested2 implements Batcher.ArrayNested2.
-func (q *DBQuerier) QueueArrayNested2(batch *pgx.Batch) *QueuedArrayNested2 {
+func (q *DBQuerier) QueueArrayNested2(batch Batcher) *QueuedArrayNested2 {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -240,7 +244,7 @@ func (q *QueuedNested3) runOnResult(result []ProductImageSetType) error {
 }
 
 // Nested3 implements Batcher.Nested3.
-func (q *DBQuerier) QueueNested3(batch *pgx.Batch) *QueuedNested3 {
+func (q *DBQuerier) QueueNested3(batch Batcher) *QueuedNested3 {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

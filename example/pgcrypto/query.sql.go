@@ -21,9 +21,9 @@ type Querier interface {
 
 	FindUser(ctx context.Context, email string) (FindUserRow, error)
 
-	QueueCreateUser(batch *pgx.Batch, email string, password string) *QueuedCreateUser
+	QueueCreateUser(batch Batcher, email string, password string) *QueuedCreateUser
 
-	QueueFindUser(batch *pgx.Batch, email string) *QueuedFindUser
+	QueueFindUser(batch Batcher, email string) *QueuedFindUser
 }
 
 var _ Querier = &DBQuerier{}
@@ -40,6 +40,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -128,7 +132,7 @@ func (q *QueuedCreateUser) runOnResult(result pgconn.CommandTag) error {
 }
 
 // CreateUser implements Batcher.CreateUser.
-func (q *DBQuerier) QueueCreateUser(batch *pgx.Batch, email string, password string) *QueuedCreateUser {
+func (q *DBQuerier) QueueCreateUser(batch Batcher, email string, password string) *QueuedCreateUser {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -203,7 +207,7 @@ func (q *QueuedFindUser) runOnResult(result FindUserRow) error {
 }
 
 // FindUser implements Batcher.FindUser.
-func (q *DBQuerier) QueueFindUser(batch *pgx.Batch, email string) *QueuedFindUser {
+func (q *DBQuerier) QueueFindUser(batch Batcher, email string) *QueuedFindUser {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

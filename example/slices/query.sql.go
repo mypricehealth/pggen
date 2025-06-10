@@ -26,13 +26,13 @@ type Querier interface {
 
 	GetManyTimestamps(ctx context.Context, data []*time.Time) ([]*time.Time, error)
 
-	QueueGetBools(batch *pgx.Batch, data []bool) *QueuedGetBools
+	QueueGetBools(batch Batcher, data []bool) *QueuedGetBools
 
-	QueueGetOneTimestamp(batch *pgx.Batch, data *time.Time) *QueuedGetOneTimestamp
+	QueueGetOneTimestamp(batch Batcher, data *time.Time) *QueuedGetOneTimestamp
 
-	QueueGetManyTimestamptzs(batch *pgx.Batch, data []time.Time) *QueuedGetManyTimestamptzs
+	QueueGetManyTimestamptzs(batch Batcher, data []time.Time) *QueuedGetManyTimestamptzs
 
-	QueueGetManyTimestamps(batch *pgx.Batch, data []*time.Time) *QueuedGetManyTimestamps
+	QueueGetManyTimestamps(batch Batcher, data []*time.Time) *QueuedGetManyTimestamps
 }
 
 var _ Querier = &DBQuerier{}
@@ -49,6 +49,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -137,7 +141,7 @@ func (q *QueuedGetBools) runOnResult(result []bool) error {
 }
 
 // GetBools implements Batcher.GetBools.
-func (q *DBQuerier) QueueGetBools(batch *pgx.Batch, data []bool) *QueuedGetBools {
+func (q *DBQuerier) QueueGetBools(batch Batcher, data []bool) *QueuedGetBools {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -210,7 +214,7 @@ func (q *QueuedGetOneTimestamp) runOnResult(result *time.Time) error {
 }
 
 // GetOneTimestamp implements Batcher.GetOneTimestamp.
-func (q *DBQuerier) QueueGetOneTimestamp(batch *pgx.Batch, data *time.Time) *QueuedGetOneTimestamp {
+func (q *DBQuerier) QueueGetOneTimestamp(batch Batcher, data *time.Time) *QueuedGetOneTimestamp {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -284,7 +288,7 @@ func (q *QueuedGetManyTimestamptzs) runOnResult(result []*time.Time) error {
 }
 
 // GetManyTimestamptzs implements Batcher.GetManyTimestamptzs.
-func (q *DBQuerier) QueueGetManyTimestamptzs(batch *pgx.Batch, data []time.Time) *QueuedGetManyTimestamptzs {
+func (q *DBQuerier) QueueGetManyTimestamptzs(batch Batcher, data []time.Time) *QueuedGetManyTimestamptzs {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -358,7 +362,7 @@ func (q *QueuedGetManyTimestamps) runOnResult(result []*time.Time) error {
 }
 
 // GetManyTimestamps implements Batcher.GetManyTimestamps.
-func (q *DBQuerier) QueueGetManyTimestamps(batch *pgx.Batch, data []*time.Time) *QueuedGetManyTimestamps {
+func (q *DBQuerier) QueueGetManyTimestamps(batch Batcher, data []*time.Time) *QueuedGetManyTimestamps {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

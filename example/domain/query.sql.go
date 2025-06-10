@@ -19,7 +19,7 @@ type QueryName struct{}
 type Querier interface {
 	DomainOne(ctx context.Context) (string, error)
 
-	QueueDomainOne(batch *pgx.Batch) *QueuedDomainOne
+	QueueDomainOne(batch Batcher) *QueuedDomainOne
 }
 
 var _ Querier = &DBQuerier{}
@@ -36,6 +36,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -124,7 +128,7 @@ func (q *QueuedDomainOne) runOnResult(result string) error {
 }
 
 // DomainOne implements Batcher.DomainOne.
-func (q *DBQuerier) QueueDomainOne(batch *pgx.Batch) *QueuedDomainOne {
+func (q *DBQuerier) QueueDomainOne(batch Batcher) *QueuedDomainOne {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

@@ -30,16 +30,16 @@ type Querier interface {
 	DeleteAuthorsByFullName(ctx context.Context, firstName string, lastName string, suffix string) (pgconn.CommandTag, error)
 
 	// CountAuthors returns the number of authors (zero params).
-	QueueCountAuthors(batch *pgx.Batch) *QueuedCountAuthors
+	QueueCountAuthors(batch Batcher) *QueuedCountAuthors
 
 	// FindAuthorById finds one (or zero) authors by ID (one param).
-	QueueFindAuthorByID(batch *pgx.Batch, authorID int32) *QueuedFindAuthorByID
+	QueueFindAuthorByID(batch Batcher, authorID int32) *QueuedFindAuthorByID
 
 	// InsertAuthor inserts an author by name and returns the ID (two params).
-	QueueInsertAuthor(batch *pgx.Batch, firstName string, lastName string) *QueuedInsertAuthor
+	QueueInsertAuthor(batch Batcher, firstName string, lastName string) *QueuedInsertAuthor
 
 	// DeleteAuthorsByFullName deletes authors by the full name (three params).
-	QueueDeleteAuthorsByFullName(batch *pgx.Batch, firstName string, lastName string, suffix string) *QueuedDeleteAuthorsByFullName
+	QueueDeleteAuthorsByFullName(batch Batcher, firstName string, lastName string, suffix string) *QueuedDeleteAuthorsByFullName
 }
 
 var _ Querier = &DBQuerier{}
@@ -56,6 +56,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -144,7 +148,7 @@ func (q *QueuedCountAuthors) runOnResult(result *int) error {
 }
 
 // CountAuthors implements Batcher.CountAuthors.
-func (q *DBQuerier) QueueCountAuthors(batch *pgx.Batch) *QueuedCountAuthors {
+func (q *DBQuerier) QueueCountAuthors(batch Batcher) *QueuedCountAuthors {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -224,7 +228,7 @@ func (q *QueuedFindAuthorByID) runOnResult(result FindAuthorByIDRow) error {
 }
 
 // FindAuthorByID implements Batcher.FindAuthorByID.
-func (q *DBQuerier) QueueFindAuthorByID(batch *pgx.Batch, authorID int32) *QueuedFindAuthorByID {
+func (q *DBQuerier) QueueFindAuthorByID(batch Batcher, authorID int32) *QueuedFindAuthorByID {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -299,7 +303,7 @@ func (q *QueuedInsertAuthor) runOnResult(result int32) error {
 }
 
 // InsertAuthor implements Batcher.InsertAuthor.
-func (q *DBQuerier) QueueInsertAuthor(batch *pgx.Batch, firstName string, lastName string) *QueuedInsertAuthor {
+func (q *DBQuerier) QueueInsertAuthor(batch Batcher, firstName string, lastName string) *QueuedInsertAuthor {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -375,7 +379,7 @@ func (q *QueuedDeleteAuthorsByFullName) runOnResult(result pgconn.CommandTag) er
 }
 
 // DeleteAuthorsByFullName implements Batcher.DeleteAuthorsByFullName.
-func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch *pgx.Batch, firstName string, lastName string, suffix string) *QueuedDeleteAuthorsByFullName {
+func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch Batcher, firstName string, lastName string, suffix string) *QueuedDeleteAuthorsByFullName {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

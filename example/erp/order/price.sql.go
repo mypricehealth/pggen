@@ -66,7 +66,7 @@ func (q *QueuedFindOrdersByPrice) runOnResult(result []FindOrdersByPriceRow) err
 }
 
 // FindOrdersByPrice implements Batcher.FindOrdersByPrice.
-func (q *DBQuerier) QueueFindOrdersByPrice(batch *pgx.Batch, minTotal decimal.Decimal) *QueuedFindOrdersByPrice {
+func (q *DBQuerier) QueueFindOrdersByPrice(batch Batcher, minTotal decimal.Decimal) *QueuedFindOrdersByPrice {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -146,7 +146,7 @@ func (q *QueuedFindOrdersMRR) runOnResult(result []FindOrdersMRRRow) error {
 }
 
 // FindOrdersMRR implements Batcher.FindOrdersMRR.
-func (q *DBQuerier) QueueFindOrdersMRR(batch *pgx.Batch) *QueuedFindOrdersMRR {
+func (q *DBQuerier) QueueFindOrdersMRR(batch Batcher) *QueuedFindOrdersMRR {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

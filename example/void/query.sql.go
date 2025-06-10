@@ -27,15 +27,15 @@ type Querier interface {
 
 	VoidThree2(ctx context.Context) ([]string, error)
 
-	QueueVoidOnly(batch *pgx.Batch) *QueuedVoidOnly
+	QueueVoidOnly(batch Batcher) *QueuedVoidOnly
 
-	QueueVoidOnlyTwoParams(batch *pgx.Batch, id int32) *QueuedVoidOnlyTwoParams
+	QueueVoidOnlyTwoParams(batch Batcher, id int32) *QueuedVoidOnlyTwoParams
 
-	QueueVoidTwo(batch *pgx.Batch) *QueuedVoidTwo
+	QueueVoidTwo(batch Batcher) *QueuedVoidTwo
 
-	QueueVoidThree(batch *pgx.Batch) *QueuedVoidThree
+	QueueVoidThree(batch Batcher) *QueuedVoidThree
 
-	QueueVoidThree2(batch *pgx.Batch) *QueuedVoidThree2
+	QueueVoidThree2(batch Batcher) *QueuedVoidThree2
 }
 
 var _ Querier = &DBQuerier{}
@@ -52,6 +52,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -139,7 +143,7 @@ func (q *QueuedVoidOnly) runOnResult(result pgconn.CommandTag) error {
 }
 
 // VoidOnly implements Batcher.VoidOnly.
-func (q *DBQuerier) QueueVoidOnly(batch *pgx.Batch) *QueuedVoidOnly {
+func (q *DBQuerier) QueueVoidOnly(batch Batcher) *QueuedVoidOnly {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -207,7 +211,7 @@ func (q *QueuedVoidOnlyTwoParams) runOnResult(result pgconn.CommandTag) error {
 }
 
 // VoidOnlyTwoParams implements Batcher.VoidOnlyTwoParams.
-func (q *DBQuerier) QueueVoidOnlyTwoParams(batch *pgx.Batch, id int32) *QueuedVoidOnlyTwoParams {
+func (q *DBQuerier) QueueVoidOnlyTwoParams(batch Batcher, id int32) *QueuedVoidOnlyTwoParams {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -276,7 +280,7 @@ func (q *QueuedVoidTwo) runOnResult(result string) error {
 }
 
 // VoidTwo implements Batcher.VoidTwo.
-func (q *DBQuerier) QueueVoidTwo(batch *pgx.Batch) *QueuedVoidTwo {
+func (q *DBQuerier) QueueVoidTwo(batch Batcher) *QueuedVoidTwo {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -354,7 +358,7 @@ func (q *QueuedVoidThree) runOnResult(result VoidThreeRow) error {
 }
 
 // VoidThree implements Batcher.VoidThree.
-func (q *DBQuerier) QueueVoidThree(batch *pgx.Batch) *QueuedVoidThree {
+func (q *DBQuerier) QueueVoidThree(batch Batcher) *QueuedVoidThree {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -427,7 +431,7 @@ func (q *QueuedVoidThree2) runOnResult(result []string) error {
 }
 
 // VoidThree2 implements Batcher.VoidThree2.
-func (q *DBQuerier) QueueVoidThree2(batch *pgx.Batch) *QueuedVoidThree2 {
+func (q *DBQuerier) QueueVoidThree2(batch Batcher) *QueuedVoidThree2 {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

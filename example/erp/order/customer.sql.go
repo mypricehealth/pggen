@@ -33,19 +33,19 @@ type Querier interface {
 
 	FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, error)
 
-	QueueCreateTenant(batch *pgx.Batch, key string, name string) *QueuedCreateTenant
+	QueueCreateTenant(batch Batcher, key string, name string) *QueuedCreateTenant
 
-	QueueFindOrdersByCustomer(batch *pgx.Batch, customerID int32) *QueuedFindOrdersByCustomer
+	QueueFindOrdersByCustomer(batch Batcher, customerID int32) *QueuedFindOrdersByCustomer
 
-	QueueFindProductsInOrder(batch *pgx.Batch, orderID int32) *QueuedFindProductsInOrder
+	QueueFindProductsInOrder(batch Batcher, orderID int32) *QueuedFindProductsInOrder
 
-	QueueInsertCustomer(batch *pgx.Batch, params InsertCustomerParams) *QueuedInsertCustomer
+	QueueInsertCustomer(batch Batcher, params InsertCustomerParams) *QueuedInsertCustomer
 
-	QueueInsertOrder(batch *pgx.Batch, params InsertOrderParams) *QueuedInsertOrder
+	QueueInsertOrder(batch Batcher, params InsertOrderParams) *QueuedInsertOrder
 
-	QueueFindOrdersByPrice(batch *pgx.Batch, minTotal decimal.Decimal) *QueuedFindOrdersByPrice
+	QueueFindOrdersByPrice(batch Batcher, minTotal decimal.Decimal) *QueuedFindOrdersByPrice
 
-	QueueFindOrdersMRR(batch *pgx.Batch) *QueuedFindOrdersMRR
+	QueueFindOrdersMRR(batch Batcher) *QueuedFindOrdersMRR
 }
 
 var _ Querier = &DBQuerier{}
@@ -62,6 +62,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -158,7 +162,7 @@ func (q *QueuedCreateTenant) runOnResult(result CreateTenantRow) error {
 }
 
 // CreateTenant implements Batcher.CreateTenant.
-func (q *DBQuerier) QueueCreateTenant(batch *pgx.Batch, key string, name string) *QueuedCreateTenant {
+func (q *DBQuerier) QueueCreateTenant(batch Batcher, key string, name string) *QueuedCreateTenant {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -240,7 +244,7 @@ func (q *QueuedFindOrdersByCustomer) runOnResult(result []FindOrdersByCustomerRo
 }
 
 // FindOrdersByCustomer implements Batcher.FindOrdersByCustomer.
-func (q *DBQuerier) QueueFindOrdersByCustomer(batch *pgx.Batch, customerID int32) *QueuedFindOrdersByCustomer {
+func (q *DBQuerier) QueueFindOrdersByCustomer(batch Batcher, customerID int32) *QueuedFindOrdersByCustomer {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -323,7 +327,7 @@ func (q *QueuedFindProductsInOrder) runOnResult(result []FindProductsInOrderRow)
 }
 
 // FindProductsInOrder implements Batcher.FindProductsInOrder.
-func (q *DBQuerier) QueueFindProductsInOrder(batch *pgx.Batch, orderID int32) *QueuedFindProductsInOrder {
+func (q *DBQuerier) QueueFindProductsInOrder(batch Batcher, orderID int32) *QueuedFindProductsInOrder {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -411,7 +415,7 @@ func (q *QueuedInsertCustomer) runOnResult(result InsertCustomerRow) error {
 }
 
 // InsertCustomer implements Batcher.InsertCustomer.
-func (q *DBQuerier) QueueInsertCustomer(batch *pgx.Batch, params InsertCustomerParams) *QueuedInsertCustomer {
+func (q *DBQuerier) QueueInsertCustomer(batch Batcher, params InsertCustomerParams) *QueuedInsertCustomer {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -499,7 +503,7 @@ func (q *QueuedInsertOrder) runOnResult(result InsertOrderRow) error {
 }
 
 // InsertOrder implements Batcher.InsertOrder.
-func (q *DBQuerier) QueueInsertOrder(batch *pgx.Batch, params InsertOrderParams) *QueuedInsertOrder {
+func (q *DBQuerier) QueueInsertOrder(batch Batcher, params InsertOrderParams) *QueuedInsertOrder {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

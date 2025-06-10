@@ -24,11 +24,11 @@ type Querier interface {
 
 	IntArray(ctx context.Context) ([][]int32, error)
 
-	QueueCustomTypes(batch *pgx.Batch) *QueuedCustomTypes
+	QueueCustomTypes(batch Batcher) *QueuedCustomTypes
 
-	QueueCustomMyInt(batch *pgx.Batch) *QueuedCustomMyInt
+	QueueCustomMyInt(batch Batcher) *QueuedCustomMyInt
 
-	QueueIntArray(batch *pgx.Batch) *QueuedIntArray
+	QueueIntArray(batch Batcher) *QueuedIntArray
 }
 
 var _ Querier = &DBQuerier{}
@@ -45,6 +45,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -138,7 +142,7 @@ func (q *QueuedCustomTypes) runOnResult(result CustomTypesRow) error {
 }
 
 // CustomTypes implements Batcher.CustomTypes.
-func (q *DBQuerier) QueueCustomTypes(batch *pgx.Batch) *QueuedCustomTypes {
+func (q *DBQuerier) QueueCustomTypes(batch Batcher) *QueuedCustomTypes {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -211,7 +215,7 @@ func (q *QueuedCustomMyInt) runOnResult(result int) error {
 }
 
 // CustomMyInt implements Batcher.CustomMyInt.
-func (q *DBQuerier) QueueCustomMyInt(batch *pgx.Batch) *QueuedCustomMyInt {
+func (q *DBQuerier) QueueCustomMyInt(batch Batcher) *QueuedCustomMyInt {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -284,7 +288,7 @@ func (q *QueuedIntArray) runOnResult(result [][]int32) error {
 }
 
 // IntArray implements Batcher.IntArray.
-func (q *DBQuerier) QueueIntArray(batch *pgx.Batch) *QueuedIntArray {
+func (q *DBQuerier) QueueIntArray(batch Batcher) *QueuedIntArray {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

@@ -36,7 +36,7 @@ type Querier interface {
 	{{- if ne $q.ResultKind ":string" }}
 	{{- "\n\t" -}}
 	{{- if $q.Doc }}{{ $q.Doc }}	{{ end -}}
-	Queue{{.Name}}(batch *pgx.Batch {{- $q.EmitParams }}) *Queued{{ $q.Name }}
+	Queue{{.Name}}(batch Batcher {{- $q.EmitParams }}) *Queued{{ $q.Name }}
 	{{- "\n" -}}
 	{{- end -}}
 {{end -}}
@@ -57,6 +57,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+    Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -140,7 +144,7 @@ func (q *Queued{{ $q.Name }}) runOnResult(result {{ $q.EmitResultType }}) error 
 }
 
 // {{ $q.Name }} implements Batcher.{{ $q.Name }}.
-func (q *DBQuerier) Queue{{ $q.Name }}(batch *pgx.Batch {{- $q.EmitParams }}) *Queued{{ $q.Name }} {
+func (q *DBQuerier) Queue{{ $q.Name }}(batch Batcher {{- $q.EmitParams }}) *Queued{{ $q.Name }} {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

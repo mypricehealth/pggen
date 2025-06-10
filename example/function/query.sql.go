@@ -19,7 +19,7 @@ type QueryName struct{}
 type Querier interface {
 	OutParams(ctx context.Context) ([]OutParamsRow, error)
 
-	QueueOutParams(batch *pgx.Batch) *QueuedOutParams
+	QueueOutParams(batch Batcher) *QueuedOutParams
 }
 
 var _ Querier = &DBQuerier{}
@@ -36,6 +36,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -147,7 +151,7 @@ func (q *QueuedOutParams) runOnResult(result []OutParamsRow) error {
 }
 
 // OutParams implements Batcher.OutParams.
-func (q *DBQuerier) QueueOutParams(batch *pgx.Batch) *QueuedOutParams {
+func (q *DBQuerier) QueueOutParams(batch Batcher) *QueuedOutParams {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

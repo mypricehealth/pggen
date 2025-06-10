@@ -57,7 +57,7 @@ func (q *QueuedAlpha) runOnResult(result string) error {
 }
 
 // Alpha implements Batcher.Alpha.
-func (q *DBQuerier) QueueAlpha(batch *pgx.Batch) *QueuedAlpha {
+func (q *DBQuerier) QueueAlpha(batch Batcher) *QueuedAlpha {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

@@ -34,21 +34,21 @@ type Querier interface {
 	// Regression test for https://github.com/jschaf/pggen/issues/23.
 	EnumInsideComposite(ctx context.Context) (Device, error)
 
-	QueueFindAllDevices(batch *pgx.Batch) *QueuedFindAllDevices
+	QueueFindAllDevices(batch Batcher) *QueuedFindAllDevices
 
-	QueueInsertDevice(batch *pgx.Batch, mac net.HardwareAddr, typePg DeviceType) *QueuedInsertDevice
+	QueueInsertDevice(batch Batcher, mac net.HardwareAddr, typePg DeviceType) *QueuedInsertDevice
 
 	// Select an array of all device_type enum values.
-	QueueFindOneDeviceArray(batch *pgx.Batch) *QueuedFindOneDeviceArray
+	QueueFindOneDeviceArray(batch Batcher) *QueuedFindOneDeviceArray
 
 	// Select many rows of device_type enum values.
-	QueueFindManyDeviceArray(batch *pgx.Batch) *QueuedFindManyDeviceArray
+	QueueFindManyDeviceArray(batch Batcher) *QueuedFindManyDeviceArray
 
 	// Select many rows of device_type enum values with multiple output columns.
-	QueueFindManyDeviceArrayWithNum(batch *pgx.Batch) *QueuedFindManyDeviceArrayWithNum
+	QueueFindManyDeviceArrayWithNum(batch Batcher) *QueuedFindManyDeviceArrayWithNum
 
 	// Regression test for https://github.com/jschaf/pggen/issues/23.
-	QueueEnumInsideComposite(batch *pgx.Batch) *QueuedEnumInsideComposite
+	QueueEnumInsideComposite(batch Batcher) *QueuedEnumInsideComposite
 }
 
 var _ Querier = &DBQuerier{}
@@ -65,6 +65,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -183,7 +187,7 @@ func (q *QueuedFindAllDevices) runOnResult(result []FindAllDevicesRow) error {
 }
 
 // FindAllDevices implements Batcher.FindAllDevices.
-func (q *DBQuerier) QueueFindAllDevices(batch *pgx.Batch) *QueuedFindAllDevices {
+func (q *DBQuerier) QueueFindAllDevices(batch Batcher) *QueuedFindAllDevices {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -256,7 +260,7 @@ func (q *QueuedInsertDevice) runOnResult(result pgconn.CommandTag) error {
 }
 
 // InsertDevice implements Batcher.InsertDevice.
-func (q *DBQuerier) QueueInsertDevice(batch *pgx.Batch, mac net.HardwareAddr, typePg DeviceType) *QueuedInsertDevice {
+func (q *DBQuerier) QueueInsertDevice(batch Batcher, mac net.HardwareAddr, typePg DeviceType) *QueuedInsertDevice {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -325,7 +329,7 @@ func (q *QueuedFindOneDeviceArray) runOnResult(result []DeviceType) error {
 }
 
 // FindOneDeviceArray implements Batcher.FindOneDeviceArray.
-func (q *DBQuerier) QueueFindOneDeviceArray(batch *pgx.Batch) *QueuedFindOneDeviceArray {
+func (q *DBQuerier) QueueFindOneDeviceArray(batch Batcher) *QueuedFindOneDeviceArray {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -400,7 +404,7 @@ func (q *QueuedFindManyDeviceArray) runOnResult(result [][]DeviceType) error {
 }
 
 // FindManyDeviceArray implements Batcher.FindManyDeviceArray.
-func (q *DBQuerier) QueueFindManyDeviceArray(batch *pgx.Batch) *QueuedFindManyDeviceArray {
+func (q *DBQuerier) QueueFindManyDeviceArray(batch Batcher) *QueuedFindManyDeviceArray {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -480,7 +484,7 @@ func (q *QueuedFindManyDeviceArrayWithNum) runOnResult(result []FindManyDeviceAr
 }
 
 // FindManyDeviceArrayWithNum implements Batcher.FindManyDeviceArrayWithNum.
-func (q *DBQuerier) QueueFindManyDeviceArrayWithNum(batch *pgx.Batch) *QueuedFindManyDeviceArrayWithNum {
+func (q *DBQuerier) QueueFindManyDeviceArrayWithNum(batch Batcher) *QueuedFindManyDeviceArrayWithNum {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -553,7 +557,7 @@ func (q *QueuedEnumInsideComposite) runOnResult(result Device) error {
 }
 
 // EnumInsideComposite implements Batcher.EnumInsideComposite.
-func (q *DBQuerier) QueueEnumInsideComposite(batch *pgx.Batch) *QueuedEnumInsideComposite {
+func (q *DBQuerier) QueueEnumInsideComposite(batch Batcher) *QueuedEnumInsideComposite {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

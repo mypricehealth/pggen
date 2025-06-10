@@ -25,13 +25,13 @@ type Querier interface {
 
 	Bravo(ctx context.Context) (string, error)
 
-	QueueAlphaNested(batch *pgx.Batch) *QueuedAlphaNested
+	QueueAlphaNested(batch Batcher) *QueuedAlphaNested
 
-	QueueAlphaCompositeArray(batch *pgx.Batch) *QueuedAlphaCompositeArray
+	QueueAlphaCompositeArray(batch Batcher) *QueuedAlphaCompositeArray
 
-	QueueAlpha(batch *pgx.Batch) *QueuedAlpha
+	QueueAlpha(batch Batcher) *QueuedAlpha
 
-	QueueBravo(batch *pgx.Batch) *QueuedBravo
+	QueueBravo(batch Batcher) *QueuedBravo
 }
 
 var _ Querier = &DBQuerier{}
@@ -48,6 +48,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -145,7 +149,7 @@ func (q *QueuedAlphaNested) runOnResult(result string) error {
 }
 
 // AlphaNested implements Batcher.AlphaNested.
-func (q *DBQuerier) QueueAlphaNested(batch *pgx.Batch) *QueuedAlphaNested {
+func (q *DBQuerier) QueueAlphaNested(batch Batcher) *QueuedAlphaNested {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -218,7 +222,7 @@ func (q *QueuedAlphaCompositeArray) runOnResult(result []Alpha) error {
 }
 
 // AlphaCompositeArray implements Batcher.AlphaCompositeArray.
-func (q *DBQuerier) QueueAlphaCompositeArray(batch *pgx.Batch) *QueuedAlphaCompositeArray {
+func (q *DBQuerier) QueueAlphaCompositeArray(batch Batcher) *QueuedAlphaCompositeArray {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))

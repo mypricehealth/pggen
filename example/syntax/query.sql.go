@@ -44,30 +44,30 @@ type Querier interface {
 	GoKeyword(ctx context.Context, go_ string) (string, error)
 
 	// Query to test escaping in generated Go.
-	QueueBacktick(batch *pgx.Batch) *QueuedBacktick
+	QueueBacktick(batch Batcher) *QueuedBacktick
 
 	// Query to test escaping in generated Go.
-	QueueBacktickQuoteBacktick(batch *pgx.Batch) *QueuedBacktickQuoteBacktick
+	QueueBacktickQuoteBacktick(batch Batcher) *QueuedBacktickQuoteBacktick
 
 	// Query to test escaping in generated Go.
-	QueueBacktickNewline(batch *pgx.Batch) *QueuedBacktickNewline
+	QueueBacktickNewline(batch Batcher) *QueuedBacktickNewline
 
 	// Query to test escaping in generated Go.
-	QueueBacktickDoubleQuote(batch *pgx.Batch) *QueuedBacktickDoubleQuote
+	QueueBacktickDoubleQuote(batch Batcher) *QueuedBacktickDoubleQuote
 
 	// Query to test escaping in generated Go.
-	QueueBacktickBackslashN(batch *pgx.Batch) *QueuedBacktickBackslashN
+	QueueBacktickBackslashN(batch Batcher) *QueuedBacktickBackslashN
 
 	// Illegal names.
-	QueueIllegalNameSymbols(batch *pgx.Batch, helloWorld string) *QueuedIllegalNameSymbols
+	QueueIllegalNameSymbols(batch Batcher, helloWorld string) *QueuedIllegalNameSymbols
 
 	// Space after pggen.arg
-	QueueSpaceAfter(batch *pgx.Batch, space string) *QueuedSpaceAfter
+	QueueSpaceAfter(batch Batcher, space string) *QueuedSpaceAfter
 
 	// Enum named 123.
-	QueueBadEnumName(batch *pgx.Batch) *QueuedBadEnumName
+	QueueBadEnumName(batch Batcher) *QueuedBadEnumName
 
-	QueueGoKeyword(batch *pgx.Batch, go_ string) *QueuedGoKeyword
+	QueueGoKeyword(batch Batcher, go_ string) *QueuedGoKeyword
 }
 
 var _ Querier = &DBQuerier{}
@@ -84,6 +84,10 @@ type genericConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+}
+
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 }
 
 // NewQuerier creates a DBQuerier
@@ -184,7 +188,7 @@ func (q *QueuedBacktick) runOnResult(result string) error {
 }
 
 // Backtick implements Batcher.Backtick.
-func (q *DBQuerier) QueueBacktick(batch *pgx.Batch) *QueuedBacktick {
+func (q *DBQuerier) QueueBacktick(batch Batcher) *QueuedBacktick {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -257,7 +261,7 @@ func (q *QueuedBacktickQuoteBacktick) runOnResult(result string) error {
 }
 
 // BacktickQuoteBacktick implements Batcher.BacktickQuoteBacktick.
-func (q *DBQuerier) QueueBacktickQuoteBacktick(batch *pgx.Batch) *QueuedBacktickQuoteBacktick {
+func (q *DBQuerier) QueueBacktickQuoteBacktick(batch Batcher) *QueuedBacktickQuoteBacktick {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -330,7 +334,7 @@ func (q *QueuedBacktickNewline) runOnResult(result string) error {
 }
 
 // BacktickNewline implements Batcher.BacktickNewline.
-func (q *DBQuerier) QueueBacktickNewline(batch *pgx.Batch) *QueuedBacktickNewline {
+func (q *DBQuerier) QueueBacktickNewline(batch Batcher) *QueuedBacktickNewline {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -403,7 +407,7 @@ func (q *QueuedBacktickDoubleQuote) runOnResult(result string) error {
 }
 
 // BacktickDoubleQuote implements Batcher.BacktickDoubleQuote.
-func (q *DBQuerier) QueueBacktickDoubleQuote(batch *pgx.Batch) *QueuedBacktickDoubleQuote {
+func (q *DBQuerier) QueueBacktickDoubleQuote(batch Batcher) *QueuedBacktickDoubleQuote {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -476,7 +480,7 @@ func (q *QueuedBacktickBackslashN) runOnResult(result string) error {
 }
 
 // BacktickBackslashN implements Batcher.BacktickBackslashN.
-func (q *DBQuerier) QueueBacktickBackslashN(batch *pgx.Batch) *QueuedBacktickBackslashN {
+func (q *DBQuerier) QueueBacktickBackslashN(batch Batcher) *QueuedBacktickBackslashN {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -554,7 +558,7 @@ func (q *QueuedIllegalNameSymbols) runOnResult(result IllegalNameSymbolsRow) err
 }
 
 // IllegalNameSymbols implements Batcher.IllegalNameSymbols.
-func (q *DBQuerier) QueueIllegalNameSymbols(batch *pgx.Batch, helloWorld string) *QueuedIllegalNameSymbols {
+func (q *DBQuerier) QueueIllegalNameSymbols(batch Batcher, helloWorld string) *QueuedIllegalNameSymbols {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -627,7 +631,7 @@ func (q *QueuedSpaceAfter) runOnResult(result string) error {
 }
 
 // SpaceAfter implements Batcher.SpaceAfter.
-func (q *DBQuerier) QueueSpaceAfter(batch *pgx.Batch, space string) *QueuedSpaceAfter {
+func (q *DBQuerier) QueueSpaceAfter(batch Batcher, space string) *QueuedSpaceAfter {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -700,7 +704,7 @@ func (q *QueuedBadEnumName) runOnResult(result UnnamedEnum123) error {
 }
 
 // BadEnumName implements Batcher.BadEnumName.
-func (q *DBQuerier) QueueBadEnumName(batch *pgx.Batch) *QueuedBadEnumName {
+func (q *DBQuerier) QueueBadEnumName(batch Batcher) *QueuedBadEnumName {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
@@ -773,7 +777,7 @@ func (q *QueuedGoKeyword) runOnResult(result string) error {
 }
 
 // GoKeyword implements Batcher.GoKeyword.
-func (q *DBQuerier) QueueGoKeyword(batch *pgx.Batch, go_ string) *QueuedGoKeyword {
+func (q *DBQuerier) QueueGoKeyword(batch Batcher, go_ string) *QueuedGoKeyword {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
