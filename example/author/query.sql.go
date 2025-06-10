@@ -103,13 +103,18 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(conn genericConn) *DBQuerier {
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	err := registerTypes(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -152,11 +157,6 @@ type FindAuthorByIDRow struct {
 // FindAuthorByID implements Querier.FindAuthorByID.
 func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAuthorByIDRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return FindAuthorByIDRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, authorID)
 	if err != nil {
 		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", q.errWrap(err))
@@ -196,11 +196,6 @@ func (q *QueuedFindAuthorByID) runOnResult(result FindAuthorByIDRow) error {
 
 // FindAuthorByID implements Batcher.FindAuthorByID.
 func (q *DBQuerier) QueueFindAuthorByID(batch Batcher, authorID int32) *QueuedFindAuthorByID {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindAuthorByID{}
 
 	queuedQuery := batch.Queue(findAuthorByIDSQL, authorID)
@@ -232,11 +227,6 @@ type FindAuthorsRow struct {
 // FindAuthors implements Querier.FindAuthors.
 func (q *DBQuerier) FindAuthors(ctx context.Context, firstName string) ([]FindAuthorsRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthors")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findAuthorsSQL, firstName)
 	if err != nil {
 		return nil, fmt.Errorf("query FindAuthors: %w", q.errWrap(err))
@@ -276,11 +266,6 @@ func (q *QueuedFindAuthors) runOnResult(result []FindAuthorsRow) error {
 
 // FindAuthors implements Batcher.FindAuthors.
 func (q *DBQuerier) QueueFindAuthors(batch Batcher, firstName string) *QueuedFindAuthors {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindAuthors{}
 
 	queuedQuery := batch.Queue(findAuthorsSQL, firstName)
@@ -310,11 +295,6 @@ type FindAuthorNamesRow struct {
 // FindAuthorNames implements Querier.FindAuthorNames.
 func (q *DBQuerier) FindAuthorNames(ctx context.Context, authorID int32) ([]FindAuthorNamesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorNames")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findAuthorNamesSQL, authorID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindAuthorNames: %w", q.errWrap(err))
@@ -354,11 +334,6 @@ func (q *QueuedFindAuthorNames) runOnResult(result []FindAuthorNamesRow) error {
 
 // FindAuthorNames implements Batcher.FindAuthorNames.
 func (q *DBQuerier) QueueFindAuthorNames(batch Batcher, authorID int32) *QueuedFindAuthorNames {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindAuthorNames{}
 
 	queuedQuery := batch.Queue(findAuthorNamesSQL, authorID)
@@ -383,11 +358,6 @@ const findFirstNamesSQL = `SELECT first_name FROM author ORDER BY author_id = $1
 // FindFirstNames implements Querier.FindFirstNames.
 func (q *DBQuerier) FindFirstNames(ctx context.Context, authorID int32) ([]*string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindFirstNames")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findFirstNamesSQL, authorID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindFirstNames: %w", q.errWrap(err))
@@ -427,11 +397,6 @@ func (q *QueuedFindFirstNames) runOnResult(result []*string) error {
 
 // FindFirstNames implements Batcher.FindFirstNames.
 func (q *DBQuerier) QueueFindFirstNames(batch Batcher, authorID int32) *QueuedFindFirstNames {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindFirstNames{}
 
 	queuedQuery := batch.Queue(findFirstNamesSQL, authorID)
@@ -456,11 +421,6 @@ const deleteAuthorsSQL = `DELETE FROM author WHERE first_name = 'joe';`
 // DeleteAuthors implements Querier.DeleteAuthors.
 func (q *DBQuerier) DeleteAuthors(ctx context.Context) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthors")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsSQL)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthors: %w", q.errWrap(err))
@@ -499,11 +459,6 @@ func (q *QueuedDeleteAuthors) runOnResult(result pgconn.CommandTag) error {
 
 // DeleteAuthors implements Batcher.DeleteAuthors.
 func (q *DBQuerier) QueueDeleteAuthors(batch Batcher) *QueuedDeleteAuthors {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedDeleteAuthors{}
 
 	queuedQuery := batch.Queue(deleteAuthorsSQL)
@@ -524,11 +479,6 @@ const deleteAuthorsByFirstNameSQL = `DELETE FROM author WHERE first_name = $1;`
 // DeleteAuthorsByFirstName implements Querier.DeleteAuthorsByFirstName.
 func (q *DBQuerier) DeleteAuthorsByFirstName(ctx context.Context, firstName string) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFirstName")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFirstNameSQL, firstName)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFirstName: %w", q.errWrap(err))
@@ -567,11 +517,6 @@ func (q *QueuedDeleteAuthorsByFirstName) runOnResult(result pgconn.CommandTag) e
 
 // DeleteAuthorsByFirstName implements Batcher.DeleteAuthorsByFirstName.
 func (q *DBQuerier) QueueDeleteAuthorsByFirstName(batch Batcher, firstName string) *QueuedDeleteAuthorsByFirstName {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedDeleteAuthorsByFirstName{}
 
 	queuedQuery := batch.Queue(deleteAuthorsByFirstNameSQL, firstName)
@@ -602,11 +547,6 @@ type DeleteAuthorsByFullNameParams struct {
 // DeleteAuthorsByFullName implements Querier.DeleteAuthorsByFullName.
 func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, params DeleteAuthorsByFullNameParams) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", q.errWrap(err))
@@ -645,11 +585,6 @@ func (q *QueuedDeleteAuthorsByFullName) runOnResult(result pgconn.CommandTag) er
 
 // DeleteAuthorsByFullName implements Batcher.DeleteAuthorsByFullName.
 func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch Batcher, params DeleteAuthorsByFullNameParams) *QueuedDeleteAuthorsByFullName {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedDeleteAuthorsByFullName{}
 
 	queuedQuery := batch.Queue(deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)
@@ -672,11 +607,6 @@ RETURNING author_id;`
 // InsertAuthor implements Querier.InsertAuthor.
 func (q *DBQuerier) InsertAuthor(ctx context.Context, firstName string, lastName string) (int32, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return 0, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, insertAuthorSQL, firstName, lastName)
 	if err != nil {
 		return 0, fmt.Errorf("query InsertAuthor: %w", q.errWrap(err))
@@ -716,11 +646,6 @@ func (q *QueuedInsertAuthor) runOnResult(result int32) error {
 
 // InsertAuthor implements Batcher.InsertAuthor.
 func (q *DBQuerier) QueueInsertAuthor(batch Batcher, firstName string, lastName string) *QueuedInsertAuthor {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedInsertAuthor{}
 
 	queuedQuery := batch.Queue(insertAuthorSQL, firstName, lastName)
@@ -760,11 +685,6 @@ type InsertAuthorSuffixRow struct {
 // InsertAuthorSuffix implements Querier.InsertAuthorSuffix.
 func (q *DBQuerier) InsertAuthorSuffix(ctx context.Context, params InsertAuthorSuffixParams) (InsertAuthorSuffixRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthorSuffix")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return InsertAuthorSuffixRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, insertAuthorSuffixSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
 		return InsertAuthorSuffixRow{}, fmt.Errorf("query InsertAuthorSuffix: %w", q.errWrap(err))
@@ -804,11 +724,6 @@ func (q *QueuedInsertAuthorSuffix) runOnResult(result InsertAuthorSuffixRow) err
 
 // InsertAuthorSuffix implements Batcher.InsertAuthorSuffix.
 func (q *DBQuerier) QueueInsertAuthorSuffix(batch Batcher, params InsertAuthorSuffixParams) *QueuedInsertAuthorSuffix {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedInsertAuthorSuffix{}
 
 	queuedQuery := batch.Queue(insertAuthorSuffixSQL, params.FirstName, params.LastName, params.Suffix)
@@ -833,11 +748,6 @@ const stringAggFirstNameSQL = `SELECT string_agg(first_name, ',') AS names FROM 
 // StringAggFirstName implements Querier.StringAggFirstName.
 func (q *DBQuerier) StringAggFirstName(ctx context.Context, authorID int32) (*string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "StringAggFirstName")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, stringAggFirstNameSQL, authorID)
 	if err != nil {
 		return nil, fmt.Errorf("query StringAggFirstName: %w", q.errWrap(err))
@@ -877,11 +787,6 @@ func (q *QueuedStringAggFirstName) runOnResult(result *string) error {
 
 // StringAggFirstName implements Batcher.StringAggFirstName.
 func (q *DBQuerier) QueueStringAggFirstName(batch Batcher, authorID int32) *QueuedStringAggFirstName {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedStringAggFirstName{}
 
 	queuedQuery := batch.Queue(stringAggFirstNameSQL, authorID)
@@ -906,11 +811,6 @@ const arrayAggFirstNameSQL = `SELECT array_agg(first_name) AS names FROM author 
 // ArrayAggFirstName implements Querier.ArrayAggFirstName.
 func (q *DBQuerier) ArrayAggFirstName(ctx context.Context, authorID int32) ([]string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ArrayAggFirstName")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, arrayAggFirstNameSQL, authorID)
 	if err != nil {
 		return nil, fmt.Errorf("query ArrayAggFirstName: %w", q.errWrap(err))
@@ -950,11 +850,6 @@ func (q *QueuedArrayAggFirstName) runOnResult(result []string) error {
 
 // ArrayAggFirstName implements Batcher.ArrayAggFirstName.
 func (q *DBQuerier) QueueArrayAggFirstName(batch Batcher, authorID int32) *QueuedArrayAggFirstName {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedArrayAggFirstName{}
 
 	queuedQuery := batch.Queue(arrayAggFirstNameSQL, authorID)

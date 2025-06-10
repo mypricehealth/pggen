@@ -63,13 +63,18 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(conn genericConn) *DBQuerier {
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	err := registerTypes(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -105,11 +110,6 @@ const countAuthorsSQL = `SELECT count(*) FROM author;`
 // CountAuthors implements Querier.CountAuthors.
 func (q *DBQuerier) CountAuthors(ctx context.Context) (*int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CountAuthors")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, countAuthorsSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query CountAuthors: %w", q.errWrap(err))
@@ -149,11 +149,6 @@ func (q *QueuedCountAuthors) runOnResult(result *int) error {
 
 // CountAuthors implements Batcher.CountAuthors.
 func (q *DBQuerier) QueueCountAuthors(batch Batcher) *QueuedCountAuthors {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedCountAuthors{}
 
 	queuedQuery := batch.Queue(countAuthorsSQL)
@@ -185,11 +180,6 @@ type FindAuthorByIDRow struct {
 // FindAuthorByID implements Querier.FindAuthorByID.
 func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAuthorByIDRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindAuthorByID")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return FindAuthorByIDRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findAuthorByIDSQL, authorID)
 	if err != nil {
 		return FindAuthorByIDRow{}, fmt.Errorf("query FindAuthorByID: %w", q.errWrap(err))
@@ -229,11 +219,6 @@ func (q *QueuedFindAuthorByID) runOnResult(result FindAuthorByIDRow) error {
 
 // FindAuthorByID implements Batcher.FindAuthorByID.
 func (q *DBQuerier) QueueFindAuthorByID(batch Batcher, authorID int32) *QueuedFindAuthorByID {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindAuthorByID{}
 
 	queuedQuery := batch.Queue(findAuthorByIDSQL, authorID)
@@ -265,11 +250,6 @@ type InsertAuthorParams struct {
 // InsertAuthor implements Querier.InsertAuthor.
 func (q *DBQuerier) InsertAuthor(ctx context.Context, params InsertAuthorParams) (int32, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertAuthor")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return 0, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, insertAuthorSQL, params.FirstName, params.LastName)
 	if err != nil {
 		return 0, fmt.Errorf("query InsertAuthor: %w", q.errWrap(err))
@@ -309,11 +289,6 @@ func (q *QueuedInsertAuthor) runOnResult(result int32) error {
 
 // InsertAuthor implements Batcher.InsertAuthor.
 func (q *DBQuerier) QueueInsertAuthor(batch Batcher, params InsertAuthorParams) *QueuedInsertAuthor {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedInsertAuthor{}
 
 	queuedQuery := batch.Queue(insertAuthorSQL, params.FirstName, params.LastName)
@@ -348,11 +323,6 @@ type DeleteAuthorsByFullNameParams struct {
 // DeleteAuthorsByFullName implements Querier.DeleteAuthorsByFullName.
 func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, params DeleteAuthorsByFullNameParams) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "DeleteAuthorsByFullName")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query DeleteAuthorsByFullName: %w", q.errWrap(err))
@@ -391,11 +361,6 @@ func (q *QueuedDeleteAuthorsByFullName) runOnResult(result pgconn.CommandTag) er
 
 // DeleteAuthorsByFullName implements Batcher.DeleteAuthorsByFullName.
 func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch Batcher, params DeleteAuthorsByFullNameParams) *QueuedDeleteAuthorsByFullName {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedDeleteAuthorsByFullName{}
 
 	queuedQuery := batch.Queue(deleteAuthorsByFullNameSQL, params.FirstName, params.LastName, params.Suffix)

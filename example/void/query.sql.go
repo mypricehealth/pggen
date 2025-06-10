@@ -59,13 +59,18 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(conn genericConn) *DBQuerier {
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	err := registerTypes(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -101,11 +106,6 @@ const voidOnlySQL = `SELECT void_fn();`
 // VoidOnly implements Querier.VoidOnly.
 func (q *DBQuerier) VoidOnly(ctx context.Context) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidOnly")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, voidOnlySQL)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnly: %w", q.errWrap(err))
@@ -144,11 +144,6 @@ func (q *QueuedVoidOnly) runOnResult(result pgconn.CommandTag) error {
 
 // VoidOnly implements Batcher.VoidOnly.
 func (q *DBQuerier) QueueVoidOnly(batch Batcher) *QueuedVoidOnly {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedVoidOnly{}
 
 	queuedQuery := batch.Queue(voidOnlySQL)
@@ -169,11 +164,6 @@ const voidOnlyTwoParamsSQL = `SELECT void_fn_two_params($1, 'text');`
 // VoidOnlyTwoParams implements Querier.VoidOnlyTwoParams.
 func (q *DBQuerier) VoidOnlyTwoParams(ctx context.Context, id int32) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidOnlyTwoParams")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, voidOnlyTwoParamsSQL, id)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnlyTwoParams: %w", q.errWrap(err))
@@ -212,11 +202,6 @@ func (q *QueuedVoidOnlyTwoParams) runOnResult(result pgconn.CommandTag) error {
 
 // VoidOnlyTwoParams implements Batcher.VoidOnlyTwoParams.
 func (q *DBQuerier) QueueVoidOnlyTwoParams(batch Batcher, id int32) *QueuedVoidOnlyTwoParams {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedVoidOnlyTwoParams{}
 
 	queuedQuery := batch.Queue(voidOnlyTwoParamsSQL, id)
@@ -237,11 +222,6 @@ const voidTwoSQL = `SELECT void_fn(), 'foo' as name;`
 // VoidTwo implements Querier.VoidTwo.
 func (q *DBQuerier) VoidTwo(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidTwo")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, voidTwoSQL)
 	if err != nil {
 		return "", fmt.Errorf("query VoidTwo: %w", q.errWrap(err))
@@ -281,11 +261,6 @@ func (q *QueuedVoidTwo) runOnResult(result string) error {
 
 // VoidTwo implements Batcher.VoidTwo.
 func (q *DBQuerier) QueueVoidTwo(batch Batcher) *QueuedVoidTwo {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedVoidTwo{}
 
 	queuedQuery := batch.Queue(voidTwoSQL)
@@ -315,11 +290,6 @@ type VoidThreeRow struct {
 // VoidThree implements Querier.VoidThree.
 func (q *DBQuerier) VoidThree(ctx context.Context) (VoidThreeRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidThree")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return VoidThreeRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, voidThreeSQL)
 	if err != nil {
 		return VoidThreeRow{}, fmt.Errorf("query VoidThree: %w", q.errWrap(err))
@@ -359,11 +329,6 @@ func (q *QueuedVoidThree) runOnResult(result VoidThreeRow) error {
 
 // VoidThree implements Batcher.VoidThree.
 func (q *DBQuerier) QueueVoidThree(batch Batcher) *QueuedVoidThree {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedVoidThree{}
 
 	queuedQuery := batch.Queue(voidThreeSQL)
@@ -388,11 +353,6 @@ const voidThree2SQL = `SELECT 'foo' as foo, void_fn(), void_fn();`
 // VoidThree2 implements Querier.VoidThree2.
 func (q *DBQuerier) VoidThree2(ctx context.Context) ([]string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidThree2")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, voidThree2SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query VoidThree2: %w", q.errWrap(err))
@@ -432,11 +392,6 @@ func (q *QueuedVoidThree2) runOnResult(result []string) error {
 
 // VoidThree2 implements Batcher.VoidThree2.
 func (q *DBQuerier) QueueVoidThree2(batch Batcher) *QueuedVoidThree2 {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedVoidThree2{}
 
 	queuedQuery := batch.Queue(voidThree2SQL)

@@ -77,13 +77,18 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(conn genericConn) *DBQuerier {
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	err := registerTypes(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+
 	return &DBQuerier{
 		conn: conn,
 		errWrap: func(err error) error {
 			return err
 		},
-	}
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -171,11 +176,6 @@ type FindEnumTypesRow struct {
 // FindEnumTypes implements Querier.FindEnumTypes.
 func (q *DBQuerier) FindEnumTypes(ctx context.Context, oids []uint32) ([]FindEnumTypesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindEnumTypes")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findEnumTypesSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindEnumTypes: %w", q.errWrap(err))
@@ -215,11 +215,6 @@ func (q *QueuedFindEnumTypes) runOnResult(result []FindEnumTypesRow) error {
 
 // FindEnumTypes implements Batcher.FindEnumTypes.
 func (q *DBQuerier) QueueFindEnumTypes(batch Batcher, oids []uint32) *QueuedFindEnumTypes {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindEnumTypes{}
 
 	queuedQuery := batch.Queue(findEnumTypesSQL, oids)
@@ -283,11 +278,6 @@ type FindArrayTypesRow struct {
 // FindArrayTypes implements Querier.FindArrayTypes.
 func (q *DBQuerier) FindArrayTypes(ctx context.Context, oids []uint32) ([]FindArrayTypesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindArrayTypes")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findArrayTypesSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindArrayTypes: %w", q.errWrap(err))
@@ -327,11 +317,6 @@ func (q *QueuedFindArrayTypes) runOnResult(result []FindArrayTypesRow) error {
 
 // FindArrayTypes implements Batcher.FindArrayTypes.
 func (q *DBQuerier) QueueFindArrayTypes(batch Batcher, oids []uint32) *QueuedFindArrayTypes {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindArrayTypes{}
 
 	queuedQuery := batch.Queue(findArrayTypesSQL, oids)
@@ -400,11 +385,6 @@ type FindCompositeTypesRow struct {
 // FindCompositeTypes implements Querier.FindCompositeTypes.
 func (q *DBQuerier) FindCompositeTypes(ctx context.Context, oids []uint32) ([]FindCompositeTypesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindCompositeTypes")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findCompositeTypesSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindCompositeTypes: %w", q.errWrap(err))
@@ -444,11 +424,6 @@ func (q *QueuedFindCompositeTypes) runOnResult(result []FindCompositeTypesRow) e
 
 // FindCompositeTypes implements Batcher.FindCompositeTypes.
 func (q *DBQuerier) QueueFindCompositeTypes(batch Batcher, oids []uint32) *QueuedFindCompositeTypes {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindCompositeTypes{}
 
 	queuedQuery := batch.Queue(findCompositeTypesSQL, oids)
@@ -499,11 +474,6 @@ FROM oid_descs;`
 // FindDescendantOIDs implements Querier.FindDescendantOIDs.
 func (q *DBQuerier) FindDescendantOIDs(ctx context.Context, oids []uint32) ([]uint32, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindDescendantOIDs")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findDescendantOIDsSQL, oids)
 	if err != nil {
 		return nil, fmt.Errorf("query FindDescendantOIDs: %w", q.errWrap(err))
@@ -543,11 +513,6 @@ func (q *QueuedFindDescendantOIDs) runOnResult(result []uint32) error {
 
 // FindDescendantOIDs implements Batcher.FindDescendantOIDs.
 func (q *DBQuerier) QueueFindDescendantOIDs(batch Batcher, oids []uint32) *QueuedFindDescendantOIDs {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindDescendantOIDs{}
 
 	queuedQuery := batch.Queue(findDescendantOIDsSQL, oids)
@@ -576,11 +541,6 @@ LIMIT 1;`
 // FindOIDByName implements Querier.FindOIDByName.
 func (q *DBQuerier) FindOIDByName(ctx context.Context, name string) (uint32, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOIDByName")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return 0, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findOIDByNameSQL, name)
 	if err != nil {
 		return 0, fmt.Errorf("query FindOIDByName: %w", q.errWrap(err))
@@ -620,11 +580,6 @@ func (q *QueuedFindOIDByName) runOnResult(result uint32) error {
 
 // FindOIDByName implements Batcher.FindOIDByName.
 func (q *DBQuerier) QueueFindOIDByName(batch Batcher, name string) *QueuedFindOIDByName {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindOIDByName{}
 
 	queuedQuery := batch.Queue(findOIDByNameSQL, name)
@@ -651,11 +606,6 @@ WHERE oid = $1;`
 // FindOIDName implements Querier.FindOIDName.
 func (q *DBQuerier) FindOIDName(ctx context.Context, oid uint32) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOIDName")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findOIDNameSQL, oid)
 	if err != nil {
 		return "", fmt.Errorf("query FindOIDName: %w", q.errWrap(err))
@@ -695,11 +645,6 @@ func (q *QueuedFindOIDName) runOnResult(result string) error {
 
 // FindOIDName implements Batcher.FindOIDName.
 func (q *DBQuerier) QueueFindOIDName(batch Batcher, oid uint32) *QueuedFindOIDName {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindOIDName{}
 
 	queuedQuery := batch.Queue(findOIDNameSQL, oid)
@@ -732,11 +677,6 @@ type FindOIDNamesRow struct {
 // FindOIDNames implements Querier.FindOIDNames.
 func (q *DBQuerier) FindOIDNames(ctx context.Context, oid []uint32) ([]FindOIDNamesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOIDNames")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findOIDNamesSQL, oid)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOIDNames: %w", q.errWrap(err))
@@ -776,11 +716,6 @@ func (q *QueuedFindOIDNames) runOnResult(result []FindOIDNamesRow) error {
 
 // FindOIDNames implements Batcher.FindOIDNames.
 func (q *DBQuerier) QueueFindOIDNames(batch Batcher, oid []uint32) *QueuedFindOIDNames {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedFindOIDNames{}
 
 	queuedQuery := batch.Queue(findOIDNamesSQL, oid)
