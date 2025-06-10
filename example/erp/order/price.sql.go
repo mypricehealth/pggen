@@ -36,36 +36,59 @@ func (q *DBQuerier) FindOrdersByPrice(ctx context.Context, minTotal decimal.Deci
 	return res, q.errWrap(err)
 }
 
+type QueuedFindOrdersByPrice struct {
+	wrapError func(err error) error
+	onResult  func([]FindOrdersByPriceRow) error
+}
+
+func (q *QueuedFindOrdersByPrice) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOrdersByPrice) OnResult(onResult func([]FindOrdersByPriceRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOrdersByPrice) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOrdersByPrice) runOnResult(result []FindOrdersByPriceRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindOrdersByPrice implements Batcher.FindOrdersByPrice.
-func (q *DBQuerier) QueueFindOrdersByPrice(batch *pgx.Batch, minTotal decimal.Decimal, onResult func([]FindOrdersByPriceRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindOrdersByPrice(batch *pgx.Batch, minTotal decimal.Decimal) *QueuedFindOrdersByPrice {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindOrdersByPrice{}
+
 	queuedQuery := batch.Queue(findOrdersByPriceSQL, minTotal)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByPriceRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findOrdersMRRSQL = `SELECT date_trunc('month', order_date) AS month, sum(order_total) AS order_mrr
@@ -93,34 +116,57 @@ func (q *DBQuerier) FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, erro
 	return res, q.errWrap(err)
 }
 
+type QueuedFindOrdersMRR struct {
+	wrapError func(err error) error
+	onResult  func([]FindOrdersMRRRow) error
+}
+
+func (q *QueuedFindOrdersMRR) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOrdersMRR) OnResult(onResult func([]FindOrdersMRRRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOrdersMRR) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOrdersMRR) runOnResult(result []FindOrdersMRRRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindOrdersMRR implements Batcher.FindOrdersMRR.
-func (q *DBQuerier) QueueFindOrdersMRR(batch *pgx.Batch, onResult func([]FindOrdersMRRRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindOrdersMRR(batch *pgx.Batch) *QueuedFindOrdersMRR {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindOrdersMRR{}
+
 	queuedQuery := batch.Queue(findOrdersMRRSQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersMRRRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

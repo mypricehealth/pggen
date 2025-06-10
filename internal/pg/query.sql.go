@@ -36,24 +36,24 @@ type Querier interface {
 
 	FindOIDNames(ctx context.Context, oid []uint32) ([]FindOIDNamesRow, error)
 
-	QueueFindEnumTypes(batch *pgx.Batch, oids []uint32, onResult func([]FindEnumTypesRow) error, onError func(err error) error)
+	QueueFindEnumTypes(batch *pgx.Batch, oids []uint32) *QueuedFindEnumTypes
 
-	QueueFindArrayTypes(batch *pgx.Batch, oids []uint32, onResult func([]FindArrayTypesRow) error, onError func(err error) error)
+	QueueFindArrayTypes(batch *pgx.Batch, oids []uint32) *QueuedFindArrayTypes
 
 	// A composite type represents a row or record, defined implicitly for each
 	// table, or explicitly with CREATE TYPE.
 	// https://www.postgresql.org/docs/13/rowtypes.html
-	QueueFindCompositeTypes(batch *pgx.Batch, oids []uint32, onResult func([]FindCompositeTypesRow) error, onError func(err error) error)
+	QueueFindCompositeTypes(batch *pgx.Batch, oids []uint32) *QueuedFindCompositeTypes
 
 	// Recursively expands all given OIDs to all descendants through composite
 	// types.
-	QueueFindDescendantOIDs(batch *pgx.Batch, oids []uint32, onResult func([]uint32) error, onError func(err error) error)
+	QueueFindDescendantOIDs(batch *pgx.Batch, oids []uint32) *QueuedFindDescendantOIDs
 
-	QueueFindOIDByName(batch *pgx.Batch, name string, onResult func(uint32) error, onError func(err error) error)
+	QueueFindOIDByName(batch *pgx.Batch, name string) *QueuedFindOIDByName
 
-	QueueFindOIDName(batch *pgx.Batch, oid uint32, onResult func(string) error, onError func(err error) error)
+	QueueFindOIDName(batch *pgx.Batch, oid uint32) *QueuedFindOIDName
 
-	QueueFindOIDNames(batch *pgx.Batch, oid []uint32, onResult func([]FindOIDNamesRow) error, onError func(err error) error)
+	QueueFindOIDNames(batch *pgx.Batch, oid []uint32) *QueuedFindOIDNames
 }
 
 var _ Querier = &DBQuerier{}
@@ -180,36 +180,59 @@ func (q *DBQuerier) FindEnumTypes(ctx context.Context, oids []uint32) ([]FindEnu
 	return res, q.errWrap(err)
 }
 
+type QueuedFindEnumTypes struct {
+	wrapError func(err error) error
+	onResult  func([]FindEnumTypesRow) error
+}
+
+func (q *QueuedFindEnumTypes) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindEnumTypes) OnResult(onResult func([]FindEnumTypesRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindEnumTypes) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindEnumTypes) runOnResult(result []FindEnumTypesRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindEnumTypes implements Batcher.FindEnumTypes.
-func (q *DBQuerier) QueueFindEnumTypes(batch *pgx.Batch, oids []uint32, onResult func([]FindEnumTypesRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindEnumTypes(batch *pgx.Batch, oids []uint32) *QueuedFindEnumTypes {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindEnumTypes{}
+
 	queuedQuery := batch.Queue(findEnumTypesSQL, oids)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindEnumTypesRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findArrayTypesSQL = `SELECT
@@ -269,36 +292,59 @@ func (q *DBQuerier) FindArrayTypes(ctx context.Context, oids []uint32) ([]FindAr
 	return res, q.errWrap(err)
 }
 
+type QueuedFindArrayTypes struct {
+	wrapError func(err error) error
+	onResult  func([]FindArrayTypesRow) error
+}
+
+func (q *QueuedFindArrayTypes) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindArrayTypes) OnResult(onResult func([]FindArrayTypesRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindArrayTypes) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindArrayTypes) runOnResult(result []FindArrayTypesRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindArrayTypes implements Batcher.FindArrayTypes.
-func (q *DBQuerier) QueueFindArrayTypes(batch *pgx.Batch, oids []uint32, onResult func([]FindArrayTypesRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindArrayTypes(batch *pgx.Batch, oids []uint32) *QueuedFindArrayTypes {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindArrayTypes{}
+
 	queuedQuery := batch.Queue(findArrayTypesSQL, oids)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindArrayTypesRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findCompositeTypesSQL = `WITH table_cols AS (
@@ -363,36 +409,59 @@ func (q *DBQuerier) FindCompositeTypes(ctx context.Context, oids []uint32) ([]Fi
 	return res, q.errWrap(err)
 }
 
+type QueuedFindCompositeTypes struct {
+	wrapError func(err error) error
+	onResult  func([]FindCompositeTypesRow) error
+}
+
+func (q *QueuedFindCompositeTypes) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindCompositeTypes) OnResult(onResult func([]FindCompositeTypesRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindCompositeTypes) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindCompositeTypes) runOnResult(result []FindCompositeTypesRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindCompositeTypes implements Batcher.FindCompositeTypes.
-func (q *DBQuerier) QueueFindCompositeTypes(batch *pgx.Batch, oids []uint32, onResult func([]FindCompositeTypesRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindCompositeTypes(batch *pgx.Batch, oids []uint32) *QueuedFindCompositeTypes {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindCompositeTypes{}
+
 	queuedQuery := batch.Queue(findCompositeTypesSQL, oids)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindCompositeTypesRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findDescendantOIDsSQL = `WITH RECURSIVE oid_descs(oid) AS (
@@ -439,36 +508,59 @@ func (q *DBQuerier) FindDescendantOIDs(ctx context.Context, oids []uint32) ([]ui
 	return res, q.errWrap(err)
 }
 
+type QueuedFindDescendantOIDs struct {
+	wrapError func(err error) error
+	onResult  func([]uint32) error
+}
+
+func (q *QueuedFindDescendantOIDs) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindDescendantOIDs) OnResult(onResult func([]uint32) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindDescendantOIDs) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindDescendantOIDs) runOnResult(result []uint32) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindDescendantOIDs implements Batcher.FindDescendantOIDs.
-func (q *DBQuerier) QueueFindDescendantOIDs(batch *pgx.Batch, oids []uint32, onResult func([]uint32) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindDescendantOIDs(batch *pgx.Batch, oids []uint32) *QueuedFindDescendantOIDs {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindDescendantOIDs{}
+
 	queuedQuery := batch.Queue(findDescendantOIDsSQL, oids)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowTo[uint32])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findOIDByNameSQL = `SELECT oid
@@ -493,36 +585,59 @@ func (q *DBQuerier) FindOIDByName(ctx context.Context, name string) (uint32, err
 	return res, q.errWrap(err)
 }
 
+type QueuedFindOIDByName struct {
+	wrapError func(err error) error
+	onResult  func(uint32) error
+}
+
+func (q *QueuedFindOIDByName) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOIDByName) OnResult(onResult func(uint32) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOIDByName) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOIDByName) runOnResult(result uint32) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindOIDByName implements Batcher.FindOIDByName.
-func (q *DBQuerier) QueueFindOIDByName(batch *pgx.Batch, name string, onResult func(uint32) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindOIDByName(batch *pgx.Batch, name string) *QueuedFindOIDByName {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindOIDByName{}
+
 	queuedQuery := batch.Queue(findOIDByNameSQL, name)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[uint32])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findOIDNameSQL = `SELECT typname AS name
@@ -545,36 +660,59 @@ func (q *DBQuerier) FindOIDName(ctx context.Context, oid uint32) (string, error)
 	return res, q.errWrap(err)
 }
 
+type QueuedFindOIDName struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedFindOIDName) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOIDName) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOIDName) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOIDName) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindOIDName implements Batcher.FindOIDName.
-func (q *DBQuerier) QueueFindOIDName(batch *pgx.Batch, oid uint32, onResult func(string) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindOIDName(batch *pgx.Batch, oid uint32) *QueuedFindOIDName {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindOIDName{}
+
 	queuedQuery := batch.Queue(findOIDNameSQL, oid)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findOIDNamesSQL = `SELECT oid, typname AS name, typtype AS kind
@@ -603,34 +741,57 @@ func (q *DBQuerier) FindOIDNames(ctx context.Context, oid []uint32) ([]FindOIDNa
 	return res, q.errWrap(err)
 }
 
+type QueuedFindOIDNames struct {
+	wrapError func(err error) error
+	onResult  func([]FindOIDNamesRow) error
+}
+
+func (q *QueuedFindOIDNames) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOIDNames) OnResult(onResult func([]FindOIDNamesRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOIDNames) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOIDNames) runOnResult(result []FindOIDNamesRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindOIDNames implements Batcher.FindOIDNames.
-func (q *DBQuerier) QueueFindOIDNames(batch *pgx.Batch, oid []uint32, onResult func([]FindOIDNamesRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindOIDNames(batch *pgx.Batch, oid []uint32) *QueuedFindOIDNames {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindOIDNames{}
+
 	queuedQuery := batch.Queue(findOIDNamesSQL, oid)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOIDNamesRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

@@ -21,9 +21,9 @@ type Querier interface {
 
 	FindUser(ctx context.Context, email string) (FindUserRow, error)
 
-	QueueCreateUser(batch *pgx.Batch, email string, password string, onResult func(pgconn.CommandTag) error, onError func(err error) error)
+	QueueCreateUser(batch *pgx.Batch, email string, password string) *QueuedCreateUser
 
-	QueueFindUser(batch *pgx.Batch, email string, onResult func(FindUserRow) error, onError func(err error) error)
+	QueueFindUser(batch *pgx.Batch, email string) *QueuedFindUser
 }
 
 var _ Querier = &DBQuerier{}
@@ -98,29 +98,55 @@ func (q *DBQuerier) CreateUser(ctx context.Context, email string, password strin
 	return cmdTag, q.errWrap(err)
 }
 
+type QueuedCreateUser struct {
+	wrapError func(err error) error
+	onResult  func(pgconn.CommandTag) error
+}
+
+func (q *QueuedCreateUser) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCreateUser) OnResult(onResult func(pgconn.CommandTag) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCreateUser) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCreateUser) runOnResult(result pgconn.CommandTag) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // CreateUser implements Batcher.CreateUser.
-func (q *DBQuerier) QueueCreateUser(batch *pgx.Batch, email string, password string, onResult func(pgconn.CommandTag) error, onError func(err error) error) {
+func (q *DBQuerier) QueueCreateUser(batch *pgx.Batch, email string, password string) *QueuedCreateUser {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedCreateUser{}
+
 	queuedQuery := batch.Queue(createUserSQL, email, password)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		tag, err := br.Exec()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(tag))
+		return queued.runOnResult(tag)
 	}
+
+	return queued
 }
 
 const findUserSQL = `SELECT email, pass from "user"
@@ -147,34 +173,57 @@ func (q *DBQuerier) FindUser(ctx context.Context, email string) (FindUserRow, er
 	return res, q.errWrap(err)
 }
 
+type QueuedFindUser struct {
+	wrapError func(err error) error
+	onResult  func(FindUserRow) error
+}
+
+func (q *QueuedFindUser) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindUser) OnResult(onResult func(FindUserRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindUser) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindUser) runOnResult(result FindUserRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindUser implements Batcher.FindUser.
-func (q *DBQuerier) QueueFindUser(batch *pgx.Batch, email string, onResult func(FindUserRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindUser(batch *pgx.Batch, email string) *QueuedFindUser {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindUser{}
+
 	queuedQuery := batch.Queue(findUserSQL, email)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindUserRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

@@ -25,13 +25,13 @@ type Querier interface {
 
 	FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inLtreeArray []string) (FindLtreeInputRow, error)
 
-	QueueFindTopScienceChildren(batch *pgx.Batch, onResult func([]pgtype.Text) error, onError func(err error) error)
+	QueueFindTopScienceChildren(batch *pgx.Batch) *QueuedFindTopScienceChildren
 
-	QueueFindTopScienceChildrenAgg(batch *pgx.Batch, onResult func(pgtype.TextArray) error, onError func(err error) error)
+	QueueFindTopScienceChildrenAgg(batch *pgx.Batch) *QueuedFindTopScienceChildrenAgg
 
-	QueueInsertSampleData(batch *pgx.Batch, onResult func(pgconn.CommandTag) error, onError func(err error) error)
+	QueueInsertSampleData(batch *pgx.Batch) *QueuedInsertSampleData
 
-	QueueFindLtreeInput(batch *pgx.Batch, inLtree pgtype.Text, inLtreeArray []string, onResult func(FindLtreeInputRow) error, onError func(err error) error)
+	QueueFindLtreeInput(batch *pgx.Batch, inLtree pgtype.Text, inLtreeArray []string) *QueuedFindLtreeInput
 }
 
 var _ Querier = &DBQuerier{}
@@ -108,36 +108,59 @@ func (q *DBQuerier) FindTopScienceChildren(ctx context.Context) ([]pgtype.Text, 
 	return res, q.errWrap(err)
 }
 
+type QueuedFindTopScienceChildren struct {
+	wrapError func(err error) error
+	onResult  func([]pgtype.Text) error
+}
+
+func (q *QueuedFindTopScienceChildren) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindTopScienceChildren) OnResult(onResult func([]pgtype.Text) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindTopScienceChildren) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindTopScienceChildren) runOnResult(result []pgtype.Text) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindTopScienceChildren implements Batcher.FindTopScienceChildren.
-func (q *DBQuerier) QueueFindTopScienceChildren(batch *pgx.Batch, onResult func([]pgtype.Text) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindTopScienceChildren(batch *pgx.Batch) *QueuedFindTopScienceChildren {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindTopScienceChildren{}
+
 	queuedQuery := batch.Queue(findTopScienceChildrenSQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowTo[pgtype.Text])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findTopScienceChildrenAggSQL = `SELECT array_agg(path)
@@ -160,36 +183,59 @@ func (q *DBQuerier) FindTopScienceChildrenAgg(ctx context.Context) (pgtype.TextA
 	return res, q.errWrap(err)
 }
 
+type QueuedFindTopScienceChildrenAgg struct {
+	wrapError func(err error) error
+	onResult  func(pgtype.TextArray) error
+}
+
+func (q *QueuedFindTopScienceChildrenAgg) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindTopScienceChildrenAgg) OnResult(onResult func(pgtype.TextArray) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindTopScienceChildrenAgg) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindTopScienceChildrenAgg) runOnResult(result pgtype.TextArray) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindTopScienceChildrenAgg implements Batcher.FindTopScienceChildrenAgg.
-func (q *DBQuerier) QueueFindTopScienceChildrenAgg(batch *pgx.Batch, onResult func(pgtype.TextArray) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindTopScienceChildrenAgg(batch *pgx.Batch) *QueuedFindTopScienceChildrenAgg {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindTopScienceChildrenAgg{}
+
 	queuedQuery := batch.Queue(findTopScienceChildrenAggSQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[pgtype.TextArray])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const insertSampleDataSQL = `INSERT INTO test
@@ -222,29 +268,55 @@ func (q *DBQuerier) InsertSampleData(ctx context.Context) (pgconn.CommandTag, er
 	return cmdTag, q.errWrap(err)
 }
 
+type QueuedInsertSampleData struct {
+	wrapError func(err error) error
+	onResult  func(pgconn.CommandTag) error
+}
+
+func (q *QueuedInsertSampleData) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertSampleData) OnResult(onResult func(pgconn.CommandTag) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertSampleData) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertSampleData) runOnResult(result pgconn.CommandTag) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // InsertSampleData implements Batcher.InsertSampleData.
-func (q *DBQuerier) QueueInsertSampleData(batch *pgx.Batch, onResult func(pgconn.CommandTag) error, onError func(err error) error) {
+func (q *DBQuerier) QueueInsertSampleData(batch *pgx.Batch) *QueuedInsertSampleData {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedInsertSampleData{}
+
 	queuedQuery := batch.Queue(insertSampleDataSQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		tag, err := br.Exec()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(tag))
+		return queued.runOnResult(tag)
 	}
+
+	return queued
 }
 
 const findLtreeInputSQL = `SELECT
@@ -279,34 +351,57 @@ func (q *DBQuerier) FindLtreeInput(ctx context.Context, inLtree pgtype.Text, inL
 	return res, q.errWrap(err)
 }
 
+type QueuedFindLtreeInput struct {
+	wrapError func(err error) error
+	onResult  func(FindLtreeInputRow) error
+}
+
+func (q *QueuedFindLtreeInput) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindLtreeInput) OnResult(onResult func(FindLtreeInputRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindLtreeInput) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindLtreeInput) runOnResult(result FindLtreeInputRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindLtreeInput implements Batcher.FindLtreeInput.
-func (q *DBQuerier) QueueFindLtreeInput(batch *pgx.Batch, inLtree pgtype.Text, inLtreeArray []string, onResult func(FindLtreeInputRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindLtreeInput(batch *pgx.Batch, inLtree pgtype.Text, inLtreeArray []string) *QueuedFindLtreeInput {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindLtreeInput{}
+
 	queuedQuery := batch.Queue(findLtreeInputSQL, inLtree, inLtreeArray)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindLtreeInputRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

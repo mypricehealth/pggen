@@ -25,13 +25,13 @@ type Querier interface {
 
 	Bravo(ctx context.Context) (string, error)
 
-	QueueAlphaNested(batch *pgx.Batch, onResult func(string) error, onError func(err error) error)
+	QueueAlphaNested(batch *pgx.Batch) *QueuedAlphaNested
 
-	QueueAlphaCompositeArray(batch *pgx.Batch, onResult func([]Alpha) error, onError func(err error) error)
+	QueueAlphaCompositeArray(batch *pgx.Batch) *QueuedAlphaCompositeArray
 
-	QueueAlpha(batch *pgx.Batch, onResult func(string) error, onError func(err error) error)
+	QueueAlpha(batch *pgx.Batch) *QueuedAlpha
 
-	QueueBravo(batch *pgx.Batch, onResult func(string) error, onError func(err error) error)
+	QueueBravo(batch *pgx.Batch) *QueuedBravo
 }
 
 var _ Querier = &DBQuerier{}
@@ -115,36 +115,59 @@ func (q *DBQuerier) AlphaNested(ctx context.Context) (string, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedAlphaNested struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedAlphaNested) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedAlphaNested) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedAlphaNested) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedAlphaNested) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // AlphaNested implements Batcher.AlphaNested.
-func (q *DBQuerier) QueueAlphaNested(batch *pgx.Batch, onResult func(string) error, onError func(err error) error) {
+func (q *DBQuerier) QueueAlphaNested(batch *pgx.Batch) *QueuedAlphaNested {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedAlphaNested{}
+
 	queuedQuery := batch.Queue(alphaNestedSQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const alphaCompositeArraySQL = `SELECT ARRAY[ROW('key')]::alpha[];`
@@ -165,34 +188,57 @@ func (q *DBQuerier) AlphaCompositeArray(ctx context.Context) ([]Alpha, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedAlphaCompositeArray struct {
+	wrapError func(err error) error
+	onResult  func([]Alpha) error
+}
+
+func (q *QueuedAlphaCompositeArray) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedAlphaCompositeArray) OnResult(onResult func([]Alpha) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedAlphaCompositeArray) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedAlphaCompositeArray) runOnResult(result []Alpha) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // AlphaCompositeArray implements Batcher.AlphaCompositeArray.
-func (q *DBQuerier) QueueAlphaCompositeArray(batch *pgx.Batch, onResult func([]Alpha) error, onError func(err error) error) {
+func (q *DBQuerier) QueueAlphaCompositeArray(batch *pgx.Batch) *QueuedAlphaCompositeArray {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedAlphaCompositeArray{}
+
 	queuedQuery := batch.Queue(alphaCompositeArraySQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]Alpha])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

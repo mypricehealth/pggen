@@ -33,19 +33,19 @@ type Querier interface {
 
 	FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, error)
 
-	QueueCreateTenant(batch *pgx.Batch, key string, name string, onResult func(CreateTenantRow) error, onError func(err error) error)
+	QueueCreateTenant(batch *pgx.Batch, key string, name string) *QueuedCreateTenant
 
-	QueueFindOrdersByCustomer(batch *pgx.Batch, customerID int32, onResult func([]FindOrdersByCustomerRow) error, onError func(err error) error)
+	QueueFindOrdersByCustomer(batch *pgx.Batch, customerID int32) *QueuedFindOrdersByCustomer
 
-	QueueFindProductsInOrder(batch *pgx.Batch, orderID int32, onResult func([]FindProductsInOrderRow) error, onError func(err error) error)
+	QueueFindProductsInOrder(batch *pgx.Batch, orderID int32) *QueuedFindProductsInOrder
 
-	QueueInsertCustomer(batch *pgx.Batch, params InsertCustomerParams, onResult func(InsertCustomerRow) error, onError func(err error) error)
+	QueueInsertCustomer(batch *pgx.Batch, params InsertCustomerParams) *QueuedInsertCustomer
 
-	QueueInsertOrder(batch *pgx.Batch, params InsertOrderParams, onResult func(InsertOrderRow) error, onError func(err error) error)
+	QueueInsertOrder(batch *pgx.Batch, params InsertOrderParams) *QueuedInsertOrder
 
-	QueueFindOrdersByPrice(batch *pgx.Batch, minTotal decimal.Decimal, onResult func([]FindOrdersByPriceRow) error, onError func(err error) error)
+	QueueFindOrdersByPrice(batch *pgx.Batch, minTotal decimal.Decimal) *QueuedFindOrdersByPrice
 
-	QueueFindOrdersMRR(batch *pgx.Batch, onResult func([]FindOrdersMRRRow) error, onError func(err error) error)
+	QueueFindOrdersMRR(batch *pgx.Batch) *QueuedFindOrdersMRR
 }
 
 var _ Querier = &DBQuerier{}
@@ -128,36 +128,59 @@ func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (
 	return res, q.errWrap(err)
 }
 
+type QueuedCreateTenant struct {
+	wrapError func(err error) error
+	onResult  func(CreateTenantRow) error
+}
+
+func (q *QueuedCreateTenant) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCreateTenant) OnResult(onResult func(CreateTenantRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCreateTenant) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCreateTenant) runOnResult(result CreateTenantRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // CreateTenant implements Batcher.CreateTenant.
-func (q *DBQuerier) QueueCreateTenant(batch *pgx.Batch, key string, name string, onResult func(CreateTenantRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueCreateTenant(batch *pgx.Batch, key string, name string) *QueuedCreateTenant {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedCreateTenant{}
+
 	queuedQuery := batch.Queue(createTenantSQL, key, name)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findOrdersByCustomerSQL = `SELECT *
@@ -187,36 +210,59 @@ func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) 
 	return res, q.errWrap(err)
 }
 
+type QueuedFindOrdersByCustomer struct {
+	wrapError func(err error) error
+	onResult  func([]FindOrdersByCustomerRow) error
+}
+
+func (q *QueuedFindOrdersByCustomer) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOrdersByCustomer) OnResult(onResult func([]FindOrdersByCustomerRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOrdersByCustomer) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOrdersByCustomer) runOnResult(result []FindOrdersByCustomerRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindOrdersByCustomer implements Batcher.FindOrdersByCustomer.
-func (q *DBQuerier) QueueFindOrdersByCustomer(batch *pgx.Batch, customerID int32, onResult func([]FindOrdersByCustomerRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindOrdersByCustomer(batch *pgx.Batch, customerID int32) *QueuedFindOrdersByCustomer {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindOrdersByCustomer{}
+
 	queuedQuery := batch.Queue(findOrdersByCustomerSQL, customerID)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findProductsInOrderSQL = `SELECT o.order_id, p.product_id, p.name
@@ -247,36 +293,59 @@ func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]F
 	return res, q.errWrap(err)
 }
 
+type QueuedFindProductsInOrder struct {
+	wrapError func(err error) error
+	onResult  func([]FindProductsInOrderRow) error
+}
+
+func (q *QueuedFindProductsInOrder) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindProductsInOrder) OnResult(onResult func([]FindProductsInOrderRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindProductsInOrder) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindProductsInOrder) runOnResult(result []FindProductsInOrderRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindProductsInOrder implements Batcher.FindProductsInOrder.
-func (q *DBQuerier) QueueFindProductsInOrder(batch *pgx.Batch, orderID int32, onResult func([]FindProductsInOrderRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindProductsInOrder(batch *pgx.Batch, orderID int32) *QueuedFindProductsInOrder {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindProductsInOrder{}
+
 	queuedQuery := batch.Queue(findProductsInOrderSQL, orderID)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const insertCustomerSQL = `INSERT INTO customer (first_name, last_name, email)
@@ -312,36 +381,59 @@ func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerPar
 	return res, q.errWrap(err)
 }
 
+type QueuedInsertCustomer struct {
+	wrapError func(err error) error
+	onResult  func(InsertCustomerRow) error
+}
+
+func (q *QueuedInsertCustomer) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertCustomer) OnResult(onResult func(InsertCustomerRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertCustomer) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertCustomer) runOnResult(result InsertCustomerRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // InsertCustomer implements Batcher.InsertCustomer.
-func (q *DBQuerier) QueueInsertCustomer(batch *pgx.Batch, params InsertCustomerParams, onResult func(InsertCustomerRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueInsertCustomer(batch *pgx.Batch, params InsertCustomerParams) *QueuedInsertCustomer {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedInsertCustomer{}
+
 	queuedQuery := batch.Queue(insertCustomerSQL, params.FirstName, params.LastName, params.Email)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const insertOrderSQL = `INSERT INTO orders (order_date, order_total, customer_id)
@@ -377,34 +469,57 @@ func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (
 	return res, q.errWrap(err)
 }
 
+type QueuedInsertOrder struct {
+	wrapError func(err error) error
+	onResult  func(InsertOrderRow) error
+}
+
+func (q *QueuedInsertOrder) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertOrder) OnResult(onResult func(InsertOrderRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertOrder) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertOrder) runOnResult(result InsertOrderRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // InsertOrder implements Batcher.InsertOrder.
-func (q *DBQuerier) QueueInsertOrder(batch *pgx.Batch, params InsertOrderParams, onResult func(InsertOrderRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueInsertOrder(batch *pgx.Batch, params InsertOrderParams) *QueuedInsertOrder {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedInsertOrder{}
+
 	queuedQuery := batch.Queue(insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

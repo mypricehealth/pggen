@@ -36,7 +36,7 @@ type Querier interface {
 	{{- if ne $q.ResultKind ":string" }}
 	{{- "\n\t" -}}
 	{{- if $q.Doc }}{{ $q.Doc }}	{{ end -}}
-	Queue{{.Name}}(batch *pgx.Batch {{- $q.EmitParams }}, onResult func ({{ $q.EmitResultType }}) error, onError func (err error) error)
+	Queue{{.Name}}(batch *pgx.Batch {{- $q.EmitParams }}) *Queued{{ $q.Name }}
 	{{- "\n" -}}
 	{{- end -}}
 {{end -}}
@@ -110,12 +110,43 @@ func (q *DBQuerier) {{ $q.Name }}(ctx context.Context {{- $q.EmitParams }}) ({{ 
 {{- end }}
 }
 
+type Queued{{ $q.Name }} struct {
+    wrapError func (err error) error
+    onResult  func ({{ $q.EmitResultType }}) error
+}
+
+func (q *Queued{{ $q.Name }}) WrapError(wrapError func (err error) error) {
+    q.wrapError = wrapError
+}
+
+func (q *Queued{{ $q.Name }}) OnResult(onResult func ({{ $q.EmitResultType }}) error) {
+    q.onResult = onResult
+}
+
+func (q *Queued{{ $q.Name }}) runWrapError(err error) error {
+    if q.wrapError == nil {
+        return err
+    }
+
+    return q.wrapError(err)
+}
+
+func (q *Queued{{ $q.Name }}) runOnResult(result {{ $q.EmitResultType }}) error {
+    if q.onResult == nil {
+        return nil
+    }
+
+    return q.onResult(result)
+}
+
 // {{ $q.Name }} implements Batcher.{{ $q.Name }}.
-func (q *DBQuerier) Queue{{ $q.Name }}(batch *pgx.Batch {{- $q.EmitParams }}, onResult func ({{ $q.EmitResultType }}) error, onError func (err error) error) {
+func (q *DBQuerier) Queue{{ $q.Name }}(batch *pgx.Batch {{- $q.EmitParams }}) *Queued{{ $q.Name }} {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
+
+    queued := &Queued{{ $q.Name }}{}
 
 	queuedQuery := batch.Queue({{ $q.SQLVarName }} {{- $q.EmitParamNames }})
 
@@ -123,51 +154,32 @@ func (q *DBQuerier) Queue{{ $q.Name }}(batch *pgx.Batch {{- $q.EmitParams }}, on
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		tag, err := br.Exec()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(tag))
+		return queued.runOnResult(tag)
 	}
 {{- else }}
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
 {{- if eq $q.ResultKind ":rows" }}
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(rows))
+		return queued.runOnResult(rows)
 {{- else}}
 		res, err := {{ $q.EmitCollectionFunc }}(rows, {{ $q.EmitRowToFunc }}[{{ $q.EmitSingularResultType }}])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 {{- end }}
 	}
 {{- end }}
+
+    return queued
 }
 {{- end }}
 {{- end -}}

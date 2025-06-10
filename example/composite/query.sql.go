@@ -27,15 +27,15 @@ type Querier interface {
 
 	UserEmails(ctx context.Context) (UserEmail, error)
 
-	QueueSearchScreenshots(batch *pgx.Batch, params SearchScreenshotsParams, onResult func([]SearchScreenshotsRow) error, onError func(err error) error)
+	QueueSearchScreenshots(batch *pgx.Batch, params SearchScreenshotsParams) *QueuedSearchScreenshots
 
-	QueueSearchScreenshotsOneCol(batch *pgx.Batch, params SearchScreenshotsOneColParams, onResult func([][]Blocks) error, onError func(err error) error)
+	QueueSearchScreenshotsOneCol(batch *pgx.Batch, params SearchScreenshotsOneColParams) *QueuedSearchScreenshotsOneCol
 
-	QueueInsertScreenshotBlocks(batch *pgx.Batch, screenshotID int, body string, onResult func(InsertScreenshotBlocksRow) error, onError func(err error) error)
+	QueueInsertScreenshotBlocks(batch *pgx.Batch, screenshotID int, body string) *QueuedInsertScreenshotBlocks
 
-	QueueArraysInput(batch *pgx.Batch, arrays Arrays, onResult func(Arrays) error, onError func(err error) error)
+	QueueArraysInput(batch *pgx.Batch, arrays Arrays) *QueuedArraysInput
 
-	QueueUserEmails(batch *pgx.Batch, onResult func(UserEmail) error, onError func(err error) error)
+	QueueUserEmails(batch *pgx.Batch) *QueuedUserEmails
 }
 
 var _ Querier = &DBQuerier{}
@@ -158,36 +158,59 @@ func (q *DBQuerier) SearchScreenshots(ctx context.Context, params SearchScreensh
 	return res, q.errWrap(err)
 }
 
+type QueuedSearchScreenshots struct {
+	wrapError func(err error) error
+	onResult  func([]SearchScreenshotsRow) error
+}
+
+func (q *QueuedSearchScreenshots) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedSearchScreenshots) OnResult(onResult func([]SearchScreenshotsRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedSearchScreenshots) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedSearchScreenshots) runOnResult(result []SearchScreenshotsRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // SearchScreenshots implements Batcher.SearchScreenshots.
-func (q *DBQuerier) QueueSearchScreenshots(batch *pgx.Batch, params SearchScreenshotsParams, onResult func([]SearchScreenshotsRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueSearchScreenshots(batch *pgx.Batch, params SearchScreenshotsParams) *QueuedSearchScreenshots {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedSearchScreenshots{}
+
 	queuedQuery := batch.Queue(searchScreenshotsSQL, params.Body, params.Limit, params.Offset)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[SearchScreenshotsRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const searchScreenshotsOneColSQL = `SELECT
@@ -221,36 +244,59 @@ func (q *DBQuerier) SearchScreenshotsOneCol(ctx context.Context, params SearchSc
 	return res, q.errWrap(err)
 }
 
+type QueuedSearchScreenshotsOneCol struct {
+	wrapError func(err error) error
+	onResult  func([][]Blocks) error
+}
+
+func (q *QueuedSearchScreenshotsOneCol) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedSearchScreenshotsOneCol) OnResult(onResult func([][]Blocks) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedSearchScreenshotsOneCol) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedSearchScreenshotsOneCol) runOnResult(result [][]Blocks) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // SearchScreenshotsOneCol implements Batcher.SearchScreenshotsOneCol.
-func (q *DBQuerier) QueueSearchScreenshotsOneCol(batch *pgx.Batch, params SearchScreenshotsOneColParams, onResult func([][]Blocks) error, onError func(err error) error) {
+func (q *DBQuerier) QueueSearchScreenshotsOneCol(batch *pgx.Batch, params SearchScreenshotsOneColParams) *QueuedSearchScreenshotsOneCol {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedSearchScreenshotsOneCol{}
+
 	queuedQuery := batch.Queue(searchScreenshotsOneColSQL, params.Body, params.Limit, params.Offset)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowTo[[]Blocks])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const insertScreenshotBlocksSQL = `WITH screens AS (
@@ -284,36 +330,59 @@ func (q *DBQuerier) InsertScreenshotBlocks(ctx context.Context, screenshotID int
 	return res, q.errWrap(err)
 }
 
+type QueuedInsertScreenshotBlocks struct {
+	wrapError func(err error) error
+	onResult  func(InsertScreenshotBlocksRow) error
+}
+
+func (q *QueuedInsertScreenshotBlocks) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertScreenshotBlocks) OnResult(onResult func(InsertScreenshotBlocksRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertScreenshotBlocks) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertScreenshotBlocks) runOnResult(result InsertScreenshotBlocksRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // InsertScreenshotBlocks implements Batcher.InsertScreenshotBlocks.
-func (q *DBQuerier) QueueInsertScreenshotBlocks(batch *pgx.Batch, screenshotID int, body string, onResult func(InsertScreenshotBlocksRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueInsertScreenshotBlocks(batch *pgx.Batch, screenshotID int, body string) *QueuedInsertScreenshotBlocks {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedInsertScreenshotBlocks{}
+
 	queuedQuery := batch.Queue(insertScreenshotBlocksSQL, screenshotID, body)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertScreenshotBlocksRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const arraysInputSQL = `SELECT $1::arrays;`
@@ -334,36 +403,59 @@ func (q *DBQuerier) ArraysInput(ctx context.Context, arrays Arrays) (Arrays, err
 	return res, q.errWrap(err)
 }
 
+type QueuedArraysInput struct {
+	wrapError func(err error) error
+	onResult  func(Arrays) error
+}
+
+func (q *QueuedArraysInput) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedArraysInput) OnResult(onResult func(Arrays) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedArraysInput) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedArraysInput) runOnResult(result Arrays) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // ArraysInput implements Batcher.ArraysInput.
-func (q *DBQuerier) QueueArraysInput(batch *pgx.Batch, arrays Arrays, onResult func(Arrays) error, onError func(err error) error) {
+func (q *DBQuerier) QueueArraysInput(batch *pgx.Batch, arrays Arrays) *QueuedArraysInput {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedArraysInput{}
+
 	queuedQuery := batch.Queue(arraysInputSQL, arrays)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[Arrays])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const userEmailsSQL = `SELECT ('foo', 'bar@example.com')::user_email;`
@@ -384,34 +476,57 @@ func (q *DBQuerier) UserEmails(ctx context.Context) (UserEmail, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedUserEmails struct {
+	wrapError func(err error) error
+	onResult  func(UserEmail) error
+}
+
+func (q *QueuedUserEmails) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedUserEmails) OnResult(onResult func(UserEmail) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedUserEmails) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedUserEmails) runOnResult(result UserEmail) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // UserEmails implements Batcher.UserEmails.
-func (q *DBQuerier) QueueUserEmails(batch *pgx.Batch, onResult func(UserEmail) error, onError func(err error) error) {
+func (q *DBQuerier) QueueUserEmails(batch *pgx.Batch) *QueuedUserEmails {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedUserEmails{}
+
 	queuedQuery := batch.Queue(userEmailsSQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[UserEmail])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

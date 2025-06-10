@@ -21,9 +21,9 @@ type Querier interface {
 
 	Nested3(ctx context.Context) ([]ProductImageSetType, error)
 
-	QueueArrayNested2(batch *pgx.Batch, onResult func([]ProductImageType) error, onError func(err error) error)
+	QueueArrayNested2(batch *pgx.Batch) *QueuedArrayNested2
 
-	QueueNested3(batch *pgx.Batch, onResult func([]ProductImageSetType) error, onError func(err error) error)
+	QueueNested3(batch *pgx.Batch) *QueuedNested3
 }
 
 var _ Querier = &DBQuerier{}
@@ -129,36 +129,59 @@ func (q *DBQuerier) ArrayNested2(ctx context.Context) ([]ProductImageType, error
 	return res, q.errWrap(err)
 }
 
+type QueuedArrayNested2 struct {
+	wrapError func(err error) error
+	onResult  func([]ProductImageType) error
+}
+
+func (q *QueuedArrayNested2) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedArrayNested2) OnResult(onResult func([]ProductImageType) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedArrayNested2) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedArrayNested2) runOnResult(result []ProductImageType) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // ArrayNested2 implements Batcher.ArrayNested2.
-func (q *DBQuerier) QueueArrayNested2(batch *pgx.Batch, onResult func([]ProductImageType) error, onError func(err error) error) {
+func (q *DBQuerier) QueueArrayNested2(batch *pgx.Batch) *QueuedArrayNested2 {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedArrayNested2{}
+
 	queuedQuery := batch.Queue(arrayNested2SQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const nested3SQL = `SELECT
@@ -187,34 +210,57 @@ func (q *DBQuerier) Nested3(ctx context.Context) ([]ProductImageSetType, error) 
 	return res, q.errWrap(err)
 }
 
+type QueuedNested3 struct {
+	wrapError func(err error) error
+	onResult  func([]ProductImageSetType) error
+}
+
+func (q *QueuedNested3) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedNested3) OnResult(onResult func([]ProductImageSetType) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedNested3) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedNested3) runOnResult(result []ProductImageSetType) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // Nested3 implements Batcher.Nested3.
-func (q *DBQuerier) QueueNested3(batch *pgx.Batch, onResult func([]ProductImageSetType) error, onError func(err error) error) {
+func (q *DBQuerier) QueueNested3(batch *pgx.Batch) *QueuedNested3 {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedNested3{}
+
 	queuedQuery := batch.Queue(nested3SQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowTo[ProductImageSetType])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

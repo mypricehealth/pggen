@@ -27,34 +27,57 @@ func (q *DBQuerier) Bravo(ctx context.Context) (string, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedBravo struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedBravo) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedBravo) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedBravo) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedBravo) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // Bravo implements Batcher.Bravo.
-func (q *DBQuerier) QueueBravo(batch *pgx.Batch, onResult func(string) error, onError func(err error) error) {
+func (q *DBQuerier) QueueBravo(batch *pgx.Batch) *QueuedBravo {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedBravo{}
+
 	queuedQuery := batch.Queue(bravoSQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

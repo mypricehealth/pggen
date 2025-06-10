@@ -26,13 +26,13 @@ type Querier interface {
 
 	GetManyTimestamps(ctx context.Context, data []*time.Time) ([]*time.Time, error)
 
-	QueueGetBools(batch *pgx.Batch, data []bool, onResult func([]bool) error, onError func(err error) error)
+	QueueGetBools(batch *pgx.Batch, data []bool) *QueuedGetBools
 
-	QueueGetOneTimestamp(batch *pgx.Batch, data *time.Time, onResult func(*time.Time) error, onError func(err error) error)
+	QueueGetOneTimestamp(batch *pgx.Batch, data *time.Time) *QueuedGetOneTimestamp
 
-	QueueGetManyTimestamptzs(batch *pgx.Batch, data []time.Time, onResult func([]*time.Time) error, onError func(err error) error)
+	QueueGetManyTimestamptzs(batch *pgx.Batch, data []time.Time) *QueuedGetManyTimestamptzs
 
-	QueueGetManyTimestamps(batch *pgx.Batch, data []*time.Time, onResult func([]*time.Time) error, onError func(err error) error)
+	QueueGetManyTimestamps(batch *pgx.Batch, data []*time.Time) *QueuedGetManyTimestamps
 }
 
 var _ Querier = &DBQuerier{}
@@ -107,36 +107,59 @@ func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedGetBools struct {
+	wrapError func(err error) error
+	onResult  func([]bool) error
+}
+
+func (q *QueuedGetBools) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedGetBools) OnResult(onResult func([]bool) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedGetBools) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedGetBools) runOnResult(result []bool) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // GetBools implements Batcher.GetBools.
-func (q *DBQuerier) QueueGetBools(batch *pgx.Batch, data []bool, onResult func([]bool) error, onError func(err error) error) {
+func (q *DBQuerier) QueueGetBools(batch *pgx.Batch, data []bool) *QueuedGetBools {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedGetBools{}
+
 	queuedQuery := batch.Queue(getBoolsSQL, data)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]bool])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const getOneTimestampSQL = `SELECT $1::timestamp;`
@@ -157,36 +180,59 @@ func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time
 	return res, q.errWrap(err)
 }
 
+type QueuedGetOneTimestamp struct {
+	wrapError func(err error) error
+	onResult  func(*time.Time) error
+}
+
+func (q *QueuedGetOneTimestamp) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedGetOneTimestamp) OnResult(onResult func(*time.Time) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedGetOneTimestamp) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedGetOneTimestamp) runOnResult(result *time.Time) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // GetOneTimestamp implements Batcher.GetOneTimestamp.
-func (q *DBQuerier) QueueGetOneTimestamp(batch *pgx.Batch, data *time.Time, onResult func(*time.Time) error, onError func(err error) error) {
+func (q *DBQuerier) QueueGetOneTimestamp(batch *pgx.Batch, data *time.Time) *QueuedGetOneTimestamp {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedGetOneTimestamp{}
+
 	queuedQuery := batch.Queue(getOneTimestampSQL, data)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*time.Time])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const getManyTimestamptzsSQL = `SELECT *
@@ -208,36 +254,59 @@ func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) (
 	return res, q.errWrap(err)
 }
 
+type QueuedGetManyTimestamptzs struct {
+	wrapError func(err error) error
+	onResult  func([]*time.Time) error
+}
+
+func (q *QueuedGetManyTimestamptzs) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedGetManyTimestamptzs) OnResult(onResult func([]*time.Time) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedGetManyTimestamptzs) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedGetManyTimestamptzs) runOnResult(result []*time.Time) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // GetManyTimestamptzs implements Batcher.GetManyTimestamptzs.
-func (q *DBQuerier) QueueGetManyTimestamptzs(batch *pgx.Batch, data []time.Time, onResult func([]*time.Time) error, onError func(err error) error) {
+func (q *DBQuerier) QueueGetManyTimestamptzs(batch *pgx.Batch, data []time.Time) *QueuedGetManyTimestamptzs {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedGetManyTimestamptzs{}
+
 	queuedQuery := batch.Queue(getManyTimestamptzsSQL, data)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const getManyTimestampsSQL = `SELECT *
@@ -259,34 +328,57 @@ func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([
 	return res, q.errWrap(err)
 }
 
+type QueuedGetManyTimestamps struct {
+	wrapError func(err error) error
+	onResult  func([]*time.Time) error
+}
+
+func (q *QueuedGetManyTimestamps) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedGetManyTimestamps) OnResult(onResult func([]*time.Time) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedGetManyTimestamps) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedGetManyTimestamps) runOnResult(result []*time.Time) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // GetManyTimestamps implements Batcher.GetManyTimestamps.
-func (q *DBQuerier) QueueGetManyTimestamps(batch *pgx.Batch, data []*time.Time, onResult func([]*time.Time) error, onError func(err error) error) {
+func (q *DBQuerier) QueueGetManyTimestamps(batch *pgx.Batch, data []*time.Time) *QueuedGetManyTimestamps {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedGetManyTimestamps{}
+
 	queuedQuery := batch.Queue(getManyTimestampsSQL, data)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }

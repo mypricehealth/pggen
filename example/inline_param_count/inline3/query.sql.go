@@ -30,16 +30,16 @@ type Querier interface {
 	DeleteAuthorsByFullName(ctx context.Context, firstName string, lastName string, suffix string) (pgconn.CommandTag, error)
 
 	// CountAuthors returns the number of authors (zero params).
-	QueueCountAuthors(batch *pgx.Batch, onResult func(*int) error, onError func(err error) error)
+	QueueCountAuthors(batch *pgx.Batch) *QueuedCountAuthors
 
 	// FindAuthorById finds one (or zero) authors by ID (one param).
-	QueueFindAuthorByID(batch *pgx.Batch, authorID int32, onResult func(FindAuthorByIDRow) error, onError func(err error) error)
+	QueueFindAuthorByID(batch *pgx.Batch, authorID int32) *QueuedFindAuthorByID
 
 	// InsertAuthor inserts an author by name and returns the ID (two params).
-	QueueInsertAuthor(batch *pgx.Batch, firstName string, lastName string, onResult func(int32) error, onError func(err error) error)
+	QueueInsertAuthor(batch *pgx.Batch, firstName string, lastName string) *QueuedInsertAuthor
 
 	// DeleteAuthorsByFullName deletes authors by the full name (three params).
-	QueueDeleteAuthorsByFullName(batch *pgx.Batch, firstName string, lastName string, suffix string, onResult func(pgconn.CommandTag) error, onError func(err error) error)
+	QueueDeleteAuthorsByFullName(batch *pgx.Batch, firstName string, lastName string, suffix string) *QueuedDeleteAuthorsByFullName
 }
 
 var _ Querier = &DBQuerier{}
@@ -114,36 +114,59 @@ func (q *DBQuerier) CountAuthors(ctx context.Context) (*int, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedCountAuthors struct {
+	wrapError func(err error) error
+	onResult  func(*int) error
+}
+
+func (q *QueuedCountAuthors) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCountAuthors) OnResult(onResult func(*int) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCountAuthors) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCountAuthors) runOnResult(result *int) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // CountAuthors implements Batcher.CountAuthors.
-func (q *DBQuerier) QueueCountAuthors(batch *pgx.Batch, onResult func(*int) error, onError func(err error) error) {
+func (q *DBQuerier) QueueCountAuthors(batch *pgx.Batch) *QueuedCountAuthors {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedCountAuthors{}
+
 	queuedQuery := batch.Queue(countAuthorsSQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const findAuthorByIDSQL = `SELECT * FROM author WHERE author_id = $1;`
@@ -171,36 +194,59 @@ func (q *DBQuerier) FindAuthorByID(ctx context.Context, authorID int32) (FindAut
 	return res, q.errWrap(err)
 }
 
+type QueuedFindAuthorByID struct {
+	wrapError func(err error) error
+	onResult  func(FindAuthorByIDRow) error
+}
+
+func (q *QueuedFindAuthorByID) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindAuthorByID) OnResult(onResult func(FindAuthorByIDRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindAuthorByID) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindAuthorByID) runOnResult(result FindAuthorByIDRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // FindAuthorByID implements Batcher.FindAuthorByID.
-func (q *DBQuerier) QueueFindAuthorByID(batch *pgx.Batch, authorID int32, onResult func(FindAuthorByIDRow) error, onError func(err error) error) {
+func (q *DBQuerier) QueueFindAuthorByID(batch *pgx.Batch, authorID int32) *QueuedFindAuthorByID {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedFindAuthorByID{}
+
 	queuedQuery := batch.Queue(findAuthorByIDSQL, authorID)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindAuthorByIDRow])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const insertAuthorSQL = `INSERT INTO author (first_name, last_name)
@@ -223,36 +269,59 @@ func (q *DBQuerier) InsertAuthor(ctx context.Context, firstName string, lastName
 	return res, q.errWrap(err)
 }
 
+type QueuedInsertAuthor struct {
+	wrapError func(err error) error
+	onResult  func(int32) error
+}
+
+func (q *QueuedInsertAuthor) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertAuthor) OnResult(onResult func(int32) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertAuthor) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertAuthor) runOnResult(result int32) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // InsertAuthor implements Batcher.InsertAuthor.
-func (q *DBQuerier) QueueInsertAuthor(batch *pgx.Batch, firstName string, lastName string, onResult func(int32) error, onError func(err error) error) {
+func (q *DBQuerier) QueueInsertAuthor(batch *pgx.Batch, firstName string, lastName string) *QueuedInsertAuthor {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedInsertAuthor{}
+
 	queuedQuery := batch.Queue(insertAuthorSQL, firstName, lastName)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int32])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
 
 const deleteAuthorsByFullNameSQL = `DELETE
@@ -276,27 +345,53 @@ func (q *DBQuerier) DeleteAuthorsByFullName(ctx context.Context, firstName strin
 	return cmdTag, q.errWrap(err)
 }
 
+type QueuedDeleteAuthorsByFullName struct {
+	wrapError func(err error) error
+	onResult  func(pgconn.CommandTag) error
+}
+
+func (q *QueuedDeleteAuthorsByFullName) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedDeleteAuthorsByFullName) OnResult(onResult func(pgconn.CommandTag) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedDeleteAuthorsByFullName) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedDeleteAuthorsByFullName) runOnResult(result pgconn.CommandTag) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // DeleteAuthorsByFullName implements Batcher.DeleteAuthorsByFullName.
-func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch *pgx.Batch, firstName string, lastName string, suffix string, onResult func(pgconn.CommandTag) error, onError func(err error) error) {
+func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch *pgx.Batch, firstName string, lastName string, suffix string) *QueuedDeleteAuthorsByFullName {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedDeleteAuthorsByFullName{}
+
 	queuedQuery := batch.Queue(deleteAuthorsByFullNameSQL, firstName, lastName, suffix)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		tag, err := br.Exec()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(tag))
+		return queued.runOnResult(tag)
 	}
+
+	return queued
 }

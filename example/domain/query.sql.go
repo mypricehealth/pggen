@@ -19,7 +19,7 @@ type QueryName struct{}
 type Querier interface {
 	DomainOne(ctx context.Context) (string, error)
 
-	QueueDomainOne(batch *pgx.Batch, onResult func(string) error, onError func(err error) error)
+	QueueDomainOne(batch *pgx.Batch) *QueuedDomainOne
 }
 
 var _ Querier = &DBQuerier{}
@@ -94,34 +94,57 @@ func (q *DBQuerier) DomainOne(ctx context.Context) (string, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedDomainOne struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedDomainOne) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedDomainOne) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedDomainOne) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedDomainOne) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
 // DomainOne implements Batcher.DomainOne.
-func (q *DBQuerier) QueueDomainOne(batch *pgx.Batch, onResult func(string) error, onError func(err error) error) {
+func (q *DBQuerier) QueueDomainOne(batch *pgx.Batch) *QueuedDomainOne {
 	err := registerTypes(context.Background(), q.conn)
 	if err != nil {
 		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
 	}
 
+	queued := &QueuedDomainOne{}
+
 	queuedQuery := batch.Queue(domainOneSQL)
 	queuedQuery.Fn = func(br pgx.BatchResults) error {
 		rows, err := br.Query()
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 		if err != nil {
-			if onError != nil {
-				return q.errWrap(onError(err))
-			}
-			return q.errWrap(err)
+			return queued.runWrapError(err)
 		}
 
-		if onResult == nil {
-			return nil
-		}
-
-		return q.errWrap(onResult(res))
+		return queued.runOnResult(res)
 	}
+
+	return queued
 }
