@@ -13,9 +13,7 @@ func newQuerier(t *testing.T, sqlFiles []string) *DBQuerier {
 	conn, cleanup := pgtest.NewPostgresSchema(t, sqlFiles)
 	t.Cleanup(cleanup)
 
-	q, err := NewQuerier(context.Background(), conn)
-	require.NoError(t, err)
-
+	q := NewQuerier(conn)
 	return q
 }
 
