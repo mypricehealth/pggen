@@ -18,6 +18,8 @@ type QueryName struct{}
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
 	OutParams(ctx context.Context) ([]OutParamsRow, error)
+
+	QueueOutParams(batch Batcher) *QueuedOutParams
 }
 
 var _ Querier = &DBQuerier{}
@@ -36,14 +38,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 // ListItem represents the Postgres composite type "list_item".
@@ -102,15 +115,62 @@ type OutParamsRow struct {
 // OutParams implements Querier.OutParams.
 func (q *DBQuerier) OutParams(ctx context.Context) ([]OutParamsRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "OutParams")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, outParamsSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query OutParams: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[OutParamsRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedOutParams struct {
+	wrapError func(err error) error
+	onResult  func([]OutParamsRow) error
+}
+
+func (q *QueuedOutParams) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedOutParams) OnResult(onResult func([]OutParamsRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedOutParams) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedOutParams) runOnResult(result []OutParamsRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueOutParams implements Querier.QueueOutParams.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueOutParams(batch Batcher) *QueuedOutParams {
+	queued := &QueuedOutParams{}
+
+	queuedQuery := batch.Queue(outParamsSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[OutParamsRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

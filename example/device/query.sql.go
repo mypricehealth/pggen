@@ -31,6 +31,20 @@ type Querier interface {
 	InsertUser(ctx context.Context, userID int, name string) (pgconn.CommandTag, error)
 
 	InsertDevice(ctx context.Context, mac net.HardwareAddr, owner int) (pgconn.CommandTag, error)
+
+	QueueFindDevicesByUser(batch Batcher, id int) *QueuedFindDevicesByUser
+
+	QueueCompositeUser(batch Batcher) *QueuedCompositeUser
+
+	QueueCompositeUserOne(batch Batcher) *QueuedCompositeUserOne
+
+	QueueCompositeUserOneTwoCols(batch Batcher) *QueuedCompositeUserOneTwoCols
+
+	QueueCompositeUserMany(batch Batcher) *QueuedCompositeUserMany
+
+	QueueInsertUser(batch Batcher, userID int, name string) *QueuedInsertUser
+
+	QueueInsertDevice(batch Batcher, mac net.HardwareAddr, owner int) *QueuedInsertDevice
 }
 
 var _ Querier = &DBQuerier{}
@@ -49,14 +63,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 // User represents the Postgres composite type "user".
@@ -125,17 +150,64 @@ type FindDevicesByUserRow struct {
 // FindDevicesByUser implements Querier.FindDevicesByUser.
 func (q *DBQuerier) FindDevicesByUser(ctx context.Context, id int) ([]FindDevicesByUserRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindDevicesByUser")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findDevicesByUserSQL, id)
 	if err != nil {
 		return nil, fmt.Errorf("query FindDevicesByUser: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindDevicesByUserRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedFindDevicesByUser struct {
+	wrapError func(err error) error
+	onResult  func([]FindDevicesByUserRow) error
+}
+
+func (q *QueuedFindDevicesByUser) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindDevicesByUser) OnResult(onResult func([]FindDevicesByUserRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindDevicesByUser) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindDevicesByUser) runOnResult(result []FindDevicesByUserRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindDevicesByUser implements Querier.QueueFindDevicesByUser.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindDevicesByUser(batch Batcher, id int) *QueuedFindDevicesByUser {
+	queued := &QueuedFindDevicesByUser{}
+
+	queuedQuery := batch.Queue(findDevicesByUserSQL, id)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindDevicesByUserRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const compositeUserSQL = `SELECT
@@ -154,11 +226,6 @@ type CompositeUserRow struct {
 // CompositeUser implements Querier.CompositeUser.
 func (q *DBQuerier) CompositeUser(ctx context.Context) ([]CompositeUserRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUser")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, compositeUserSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query CompositeUser: %w", q.errWrap(err))
@@ -167,22 +234,121 @@ func (q *DBQuerier) CompositeUser(ctx context.Context) ([]CompositeUserRow, erro
 	return res, q.errWrap(err)
 }
 
+type QueuedCompositeUser struct {
+	wrapError func(err error) error
+	onResult  func([]CompositeUserRow) error
+}
+
+func (q *QueuedCompositeUser) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCompositeUser) OnResult(onResult func([]CompositeUserRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCompositeUser) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCompositeUser) runOnResult(result []CompositeUserRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueCompositeUser implements Querier.QueueCompositeUser.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueCompositeUser(batch Batcher) *QueuedCompositeUser {
+	queued := &QueuedCompositeUser{}
+
+	queuedQuery := batch.Queue(compositeUserSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[CompositeUserRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const compositeUserOneSQL = `SELECT ROW (15, 'qux')::"user" AS "user";`
 
 // CompositeUserOne implements Querier.CompositeUserOne.
 func (q *DBQuerier) CompositeUserOne(ctx context.Context) (User, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOne")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return User{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, compositeUserOneSQL)
 	if err != nil {
 		return User{}, fmt.Errorf("query CompositeUserOne: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[User])
 	return res, q.errWrap(err)
+}
+
+type QueuedCompositeUserOne struct {
+	wrapError func(err error) error
+	onResult  func(User) error
+}
+
+func (q *QueuedCompositeUserOne) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCompositeUserOne) OnResult(onResult func(User) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCompositeUserOne) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCompositeUserOne) runOnResult(result User) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueCompositeUserOne implements Querier.QueueCompositeUserOne.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueCompositeUserOne(batch Batcher) *QueuedCompositeUserOne {
+	queued := &QueuedCompositeUserOne{}
+
+	queuedQuery := batch.Queue(compositeUserOneSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[User])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const compositeUserOneTwoColsSQL = `SELECT 1 AS num, ROW (15, 'qux')::"user" AS "user";`
@@ -195,11 +361,6 @@ type CompositeUserOneTwoColsRow struct {
 // CompositeUserOneTwoCols implements Querier.CompositeUserOneTwoCols.
 func (q *DBQuerier) CompositeUserOneTwoCols(ctx context.Context) (CompositeUserOneTwoColsRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserOneTwoCols")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return CompositeUserOneTwoColsRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, compositeUserOneTwoColsSQL)
 	if err != nil {
 		return CompositeUserOneTwoColsRow{}, fmt.Errorf("query CompositeUserOneTwoCols: %w", q.errWrap(err))
@@ -208,16 +369,63 @@ func (q *DBQuerier) CompositeUserOneTwoCols(ctx context.Context) (CompositeUserO
 	return res, q.errWrap(err)
 }
 
+type QueuedCompositeUserOneTwoCols struct {
+	wrapError func(err error) error
+	onResult  func(CompositeUserOneTwoColsRow) error
+}
+
+func (q *QueuedCompositeUserOneTwoCols) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCompositeUserOneTwoCols) OnResult(onResult func(CompositeUserOneTwoColsRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCompositeUserOneTwoCols) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCompositeUserOneTwoCols) runOnResult(result CompositeUserOneTwoColsRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueCompositeUserOneTwoCols implements Querier.QueueCompositeUserOneTwoCols.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueCompositeUserOneTwoCols(batch Batcher) *QueuedCompositeUserOneTwoCols {
+	queued := &QueuedCompositeUserOneTwoCols{}
+
+	queuedQuery := batch.Queue(compositeUserOneTwoColsSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CompositeUserOneTwoColsRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const compositeUserManySQL = `SELECT ROW (15, 'qux')::"user" AS "user";`
 
 // CompositeUserMany implements Querier.CompositeUserMany.
 func (q *DBQuerier) CompositeUserMany(ctx context.Context) ([]User, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CompositeUserMany")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, compositeUserManySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query CompositeUserMany: %w", q.errWrap(err))
@@ -226,22 +434,117 @@ func (q *DBQuerier) CompositeUserMany(ctx context.Context) ([]User, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedCompositeUserMany struct {
+	wrapError func(err error) error
+	onResult  func([]User) error
+}
+
+func (q *QueuedCompositeUserMany) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCompositeUserMany) OnResult(onResult func([]User) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCompositeUserMany) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCompositeUserMany) runOnResult(result []User) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueCompositeUserMany implements Querier.QueueCompositeUserMany.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueCompositeUserMany(batch Batcher) *QueuedCompositeUserMany {
+	queued := &QueuedCompositeUserMany{}
+
+	queuedQuery := batch.Queue(compositeUserManySQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[User])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const insertUserSQL = `INSERT INTO "user" (id, name)
 VALUES ($1, $2);`
 
 // InsertUser implements Querier.InsertUser.
 func (q *DBQuerier) InsertUser(ctx context.Context, userID int, name string) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertUser")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, insertUserSQL, userID, name)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertUser: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
+}
+
+type QueuedInsertUser struct {
+	wrapError func(err error) error
+	onResult  func(pgconn.CommandTag) error
+}
+
+func (q *QueuedInsertUser) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertUser) OnResult(onResult func(pgconn.CommandTag) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertUser) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertUser) runOnResult(result pgconn.CommandTag) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueInsertUser implements Querier.QueueInsertUser.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueInsertUser(batch Batcher, userID int, name string) *QueuedInsertUser {
+	queued := &QueuedInsertUser{}
+
+	queuedQuery := batch.Queue(insertUserSQL, userID, name)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(tag)
+	}
+
+	return queued
 }
 
 const insertDeviceSQL = `INSERT INTO device (mac, owner)
@@ -250,14 +553,57 @@ VALUES ($1, $2);`
 // InsertDevice implements Querier.InsertDevice.
 func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, owner int) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, owner)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
+}
+
+type QueuedInsertDevice struct {
+	wrapError func(err error) error
+	onResult  func(pgconn.CommandTag) error
+}
+
+func (q *QueuedInsertDevice) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertDevice) OnResult(onResult func(pgconn.CommandTag) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertDevice) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertDevice) runOnResult(result pgconn.CommandTag) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueInsertDevice implements Querier.QueueInsertDevice.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueInsertDevice(batch Batcher, mac net.HardwareAddr, owner int) *QueuedInsertDevice {
+	queued := &QueuedInsertDevice{}
+
+	queuedQuery := batch.Queue(insertDeviceSQL, mac, owner)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(tag)
+	}
+
+	return queued
 }

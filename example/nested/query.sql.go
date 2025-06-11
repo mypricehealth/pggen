@@ -20,6 +20,10 @@ type Querier interface {
 	ArrayNested2(ctx context.Context) ([]ProductImageType, error)
 
 	Nested3(ctx context.Context) ([]ProductImageSetType, error)
+
+	QueueArrayNested2(batch Batcher) *QueuedArrayNested2
+
+	QueueNested3(batch Batcher) *QueuedNested3
 }
 
 var _ Querier = &DBQuerier{}
@@ -38,14 +42,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 // Dimensions represents the Postgres composite type "dimensions".
@@ -112,17 +127,64 @@ const arrayNested2SQL = `SELECT
 // ArrayNested2 implements Querier.ArrayNested2.
 func (q *DBQuerier) ArrayNested2(ctx context.Context) ([]ProductImageType, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ArrayNested2")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, arrayNested2SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query ArrayNested2: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
 	return res, q.errWrap(err)
+}
+
+type QueuedArrayNested2 struct {
+	wrapError func(err error) error
+	onResult  func([]ProductImageType) error
+}
+
+func (q *QueuedArrayNested2) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedArrayNested2) OnResult(onResult func([]ProductImageType) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedArrayNested2) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedArrayNested2) runOnResult(result []ProductImageType) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueArrayNested2 implements Querier.QueueArrayNested2.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueArrayNested2(batch Batcher) *QueuedArrayNested2 {
+	queued := &QueuedArrayNested2{}
+
+	queuedQuery := batch.Queue(arrayNested2SQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const nested3SQL = `SELECT
@@ -138,15 +200,62 @@ const nested3SQL = `SELECT
 // Nested3 implements Querier.Nested3.
 func (q *DBQuerier) Nested3(ctx context.Context) ([]ProductImageSetType, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Nested3")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, nested3SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query Nested3: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[ProductImageSetType])
 	return res, q.errWrap(err)
+}
+
+type QueuedNested3 struct {
+	wrapError func(err error) error
+	onResult  func([]ProductImageSetType) error
+}
+
+func (q *QueuedNested3) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedNested3) OnResult(onResult func([]ProductImageSetType) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedNested3) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedNested3) runOnResult(result []ProductImageSetType) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueNested3 implements Querier.QueueNested3.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueNested3(batch Batcher) *QueuedNested3 {
+	queued := &QueuedNested3{}
+
+	queuedQuery := batch.Queue(nested3SQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[ProductImageSetType])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

@@ -20,6 +20,10 @@ type Querier interface {
 	CreateUser(ctx context.Context, email string, password string) (pgconn.CommandTag, error)
 
 	FindUser(ctx context.Context, email string) (FindUserRow, error)
+
+	QueueCreateUser(batch Batcher, email string, password string) *QueuedCreateUser
+
+	QueueFindUser(batch Batcher, email string) *QueuedFindUser
 }
 
 var _ Querier = &DBQuerier{}
@@ -38,14 +42,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -82,16 +97,59 @@ VALUES ($1, crypt($2, gen_salt('bf')));`
 // CreateUser implements Querier.CreateUser.
 func (q *DBQuerier) CreateUser(ctx context.Context, email string, password string) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CreateUser")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, createUserSQL, email, password)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query CreateUser: %w", q.errWrap(err))
 	}
 	return cmdTag, q.errWrap(err)
+}
+
+type QueuedCreateUser struct {
+	wrapError func(err error) error
+	onResult  func(pgconn.CommandTag) error
+}
+
+func (q *QueuedCreateUser) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCreateUser) OnResult(onResult func(pgconn.CommandTag) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCreateUser) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCreateUser) runOnResult(result pgconn.CommandTag) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueCreateUser implements Querier.QueueCreateUser.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueCreateUser(batch Batcher, email string, password string) *QueuedCreateUser {
+	queued := &QueuedCreateUser{}
+
+	queuedQuery := batch.Queue(createUserSQL, email, password)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(tag)
+	}
+
+	return queued
 }
 
 const findUserSQL = `SELECT email, pass from "user"
@@ -105,15 +163,62 @@ type FindUserRow struct {
 // FindUser implements Querier.FindUser.
 func (q *DBQuerier) FindUser(ctx context.Context, email string) (FindUserRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindUser")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return FindUserRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findUserSQL, email)
 	if err != nil {
 		return FindUserRow{}, fmt.Errorf("query FindUser: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindUserRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedFindUser struct {
+	wrapError func(err error) error
+	onResult  func(FindUserRow) error
+}
+
+func (q *QueuedFindUser) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindUser) OnResult(onResult func(FindUserRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindUser) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindUser) runOnResult(result FindUserRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindUser implements Querier.QueueFindUser.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindUser(batch Batcher, email string) *QueuedFindUser {
+	queued := &QueuedFindUser{}
+
+	queuedQuery := batch.Queue(findUserSQL, email)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[FindUserRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

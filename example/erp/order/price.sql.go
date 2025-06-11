@@ -23,17 +23,64 @@ type FindOrdersByPriceRow struct {
 // FindOrdersByPrice implements Querier.FindOrdersByPrice.
 func (q *DBQuerier) FindOrdersByPrice(ctx context.Context, minTotal decimal.Decimal) ([]FindOrdersByPriceRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByPrice")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findOrdersByPriceSQL, minTotal)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByPrice: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByPriceRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedFindOrdersByPrice struct {
+	wrapError func(err error) error
+	onResult  func([]FindOrdersByPriceRow) error
+}
+
+func (q *QueuedFindOrdersByPrice) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOrdersByPrice) OnResult(onResult func([]FindOrdersByPriceRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOrdersByPrice) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOrdersByPrice) runOnResult(result []FindOrdersByPriceRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindOrdersByPrice implements Querier.QueueFindOrdersByPrice.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindOrdersByPrice(batch Batcher, minTotal decimal.Decimal) *QueuedFindOrdersByPrice {
+	queued := &QueuedFindOrdersByPrice{}
+
+	queuedQuery := batch.Queue(findOrdersByPriceSQL, minTotal)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByPriceRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const findOrdersMRRSQL = `SELECT date_trunc('month', order_date) AS month, sum(order_total) AS order_mrr
@@ -48,15 +95,62 @@ type FindOrdersMRRRow struct {
 // FindOrdersMRR implements Querier.FindOrdersMRR.
 func (q *DBQuerier) FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersMRR")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findOrdersMRRSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersMRR: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersMRRRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedFindOrdersMRR struct {
+	wrapError func(err error) error
+	onResult  func([]FindOrdersMRRRow) error
+}
+
+func (q *QueuedFindOrdersMRR) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOrdersMRR) OnResult(onResult func([]FindOrdersMRRRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOrdersMRR) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOrdersMRR) runOnResult(result []FindOrdersMRRRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindOrdersMRR implements Querier.QueueFindOrdersMRR.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindOrdersMRR(batch Batcher) *QueuedFindOrdersMRR {
+	queued := &QueuedFindOrdersMRR{}
+
+	queuedQuery := batch.Queue(findOrdersMRRSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersMRRRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

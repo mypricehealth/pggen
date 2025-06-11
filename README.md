@@ -70,7 +70,10 @@ How to use pggen in three steps:
 
     ```go
     var conn *pgx.Conn
-	q := NewQuerier(conn)
+	q, err := NewQuerier(conn)
+    if err != nil {
+        return err
+    }
     rows, err := q.SearchScreenshots(ctx, SearchScreenshotsParams{
         Body:   "some_prefix",
         Limit:  50,
@@ -500,7 +503,10 @@ We'll walk through the generated file `author/query.sql.go`:
     for complete example.
     
     ```sql
-	q := NewQuerier(conn)
+	q, err := NewQuerier(conn)
+    if err != nil {
+        return err
+    }
 	batch := &pgx.Batch{}
 	q.FindAuthorsBatch(batch, "alice")
 	q.FindAuthorsBatch(batch, "bob")

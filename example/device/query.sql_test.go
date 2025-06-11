@@ -14,10 +14,13 @@ import (
 func TestQuerier_FindDevicesByUser(t *testing.T) {
 	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
 	defer cleanup()
-	q := NewQuerier(conn)
+
 	ctx := context.Background()
+	q, err := NewQuerier(ctx, conn)
+	require.NoError(t, err)
+
 	userID := 18
-	_, err := q.InsertUser(ctx, userID, "foo")
+	_, err = q.InsertUser(ctx, userID, "foo")
 	require.NoError(t, err)
 	mac1, _ := net.ParseMAC("11:22:33:44:55:66")
 	_, err = q.InsertDevice(ctx, pgtype.Macaddr{Status: pgtype.Present, Addr: mac1}, userID)
@@ -47,8 +50,10 @@ func TestQuerier_FindDevicesByUser(t *testing.T) {
 func TestQuerier_CompositeUser(t *testing.T) {
 	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
 	defer cleanup()
-	q := NewQuerier(conn)
+
 	ctx := context.Background()
+	q, err := NewQuerier(ctx, conn)
+	require.NoError(t, err)
 
 	userID := 18
 	name := "foo"
@@ -84,8 +89,11 @@ func TestQuerier_CompositeUser(t *testing.T) {
 func TestQuerier_CompositeUserOne(t *testing.T) {
 	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
 	defer cleanup()
-	q := NewQuerier(conn)
+
 	ctx := context.Background()
+	q, err := NewQuerier(ctx, conn)
+	require.NoError(t, err)
+
 	id := 15
 	name := "qux"
 	wantUser := User{ID: &id, Name: &name}

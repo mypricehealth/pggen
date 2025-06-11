@@ -32,6 +32,20 @@ type Querier interface {
 	FindOrdersByPrice(ctx context.Context, minTotal decimal.Decimal) ([]FindOrdersByPriceRow, error)
 
 	FindOrdersMRR(ctx context.Context) ([]FindOrdersMRRRow, error)
+
+	QueueCreateTenant(batch Batcher, key string, name string) *QueuedCreateTenant
+
+	QueueFindOrdersByCustomer(batch Batcher, customerID int32) *QueuedFindOrdersByCustomer
+
+	QueueFindProductsInOrder(batch Batcher, orderID int32) *QueuedFindProductsInOrder
+
+	QueueInsertCustomer(batch Batcher, params InsertCustomerParams) *QueuedInsertCustomer
+
+	QueueInsertOrder(batch Batcher, params InsertOrderParams) *QueuedInsertOrder
+
+	QueueFindOrdersByPrice(batch Batcher, minTotal decimal.Decimal) *QueuedFindOrdersByPrice
+
+	QueueFindOrdersMRR(batch Batcher) *QueuedFindOrdersMRR
 }
 
 var _ Querier = &DBQuerier{}
@@ -50,14 +64,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -101,17 +126,64 @@ type CreateTenantRow struct {
 // CreateTenant implements Querier.CreateTenant.
 func (q *DBQuerier) CreateTenant(ctx context.Context, key string, name string) (CreateTenantRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CreateTenant")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return CreateTenantRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, createTenantSQL, key, name)
 	if err != nil {
 		return CreateTenantRow{}, fmt.Errorf("query CreateTenant: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedCreateTenant struct {
+	wrapError func(err error) error
+	onResult  func(CreateTenantRow) error
+}
+
+func (q *QueuedCreateTenant) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCreateTenant) OnResult(onResult func(CreateTenantRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCreateTenant) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCreateTenant) runOnResult(result CreateTenantRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueCreateTenant implements Querier.QueueCreateTenant.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueCreateTenant(batch Batcher, key string, name string) *QueuedCreateTenant {
+	queued := &QueuedCreateTenant{}
+
+	queuedQuery := batch.Queue(createTenantSQL, key, name)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CreateTenantRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const findOrdersByCustomerSQL = `SELECT *
@@ -128,17 +200,64 @@ type FindOrdersByCustomerRow struct {
 // FindOrdersByCustomer implements Querier.FindOrdersByCustomer.
 func (q *DBQuerier) FindOrdersByCustomer(ctx context.Context, customerID int32) ([]FindOrdersByCustomerRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOrdersByCustomer")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findOrdersByCustomerSQL, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOrdersByCustomer: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedFindOrdersByCustomer struct {
+	wrapError func(err error) error
+	onResult  func([]FindOrdersByCustomerRow) error
+}
+
+func (q *QueuedFindOrdersByCustomer) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOrdersByCustomer) OnResult(onResult func([]FindOrdersByCustomerRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOrdersByCustomer) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOrdersByCustomer) runOnResult(result []FindOrdersByCustomerRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindOrdersByCustomer implements Querier.QueueFindOrdersByCustomer.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindOrdersByCustomer(batch Batcher, customerID int32) *QueuedFindOrdersByCustomer {
+	queued := &QueuedFindOrdersByCustomer{}
+
+	queuedQuery := batch.Queue(findOrdersByCustomerSQL, customerID)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindOrdersByCustomerRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const findProductsInOrderSQL = `SELECT o.order_id, p.product_id, p.name
@@ -156,17 +275,64 @@ type FindProductsInOrderRow struct {
 // FindProductsInOrder implements Querier.FindProductsInOrder.
 func (q *DBQuerier) FindProductsInOrder(ctx context.Context, orderID int32) ([]FindProductsInOrderRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindProductsInOrder")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findProductsInOrderSQL, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindProductsInOrder: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedFindProductsInOrder struct {
+	wrapError func(err error) error
+	onResult  func([]FindProductsInOrderRow) error
+}
+
+func (q *QueuedFindProductsInOrder) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindProductsInOrder) OnResult(onResult func([]FindProductsInOrderRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindProductsInOrder) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindProductsInOrder) runOnResult(result []FindProductsInOrderRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindProductsInOrder implements Querier.QueueFindProductsInOrder.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindProductsInOrder(batch Batcher, orderID int32) *QueuedFindProductsInOrder {
+	queued := &QueuedFindProductsInOrder{}
+
+	queuedQuery := batch.Queue(findProductsInOrderSQL, orderID)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindProductsInOrderRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const insertCustomerSQL = `INSERT INTO customer (first_name, last_name, email)
@@ -189,17 +355,64 @@ type InsertCustomerRow struct {
 // InsertCustomer implements Querier.InsertCustomer.
 func (q *DBQuerier) InsertCustomer(ctx context.Context, params InsertCustomerParams) (InsertCustomerRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertCustomer")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return InsertCustomerRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, insertCustomerSQL, params.FirstName, params.LastName, params.Email)
 	if err != nil {
 		return InsertCustomerRow{}, fmt.Errorf("query InsertCustomer: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedInsertCustomer struct {
+	wrapError func(err error) error
+	onResult  func(InsertCustomerRow) error
+}
+
+func (q *QueuedInsertCustomer) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertCustomer) OnResult(onResult func(InsertCustomerRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertCustomer) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertCustomer) runOnResult(result InsertCustomerRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueInsertCustomer implements Querier.QueueInsertCustomer.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueInsertCustomer(batch Batcher, params InsertCustomerParams) *QueuedInsertCustomer {
+	queued := &QueuedInsertCustomer{}
+
+	queuedQuery := batch.Queue(insertCustomerSQL, params.FirstName, params.LastName, params.Email)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertCustomerRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const insertOrderSQL = `INSERT INTO orders (order_date, order_total, customer_id)
@@ -222,15 +435,62 @@ type InsertOrderRow struct {
 // InsertOrder implements Querier.InsertOrder.
 func (q *DBQuerier) InsertOrder(ctx context.Context, params InsertOrderParams) (InsertOrderRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertOrder")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return InsertOrderRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
 	if err != nil {
 		return InsertOrderRow{}, fmt.Errorf("query InsertOrder: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
 	return res, q.errWrap(err)
+}
+
+type QueuedInsertOrder struct {
+	wrapError func(err error) error
+	onResult  func(InsertOrderRow) error
+}
+
+func (q *QueuedInsertOrder) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertOrder) OnResult(onResult func(InsertOrderRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertOrder) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertOrder) runOnResult(result InsertOrderRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueInsertOrder implements Querier.QueueInsertOrder.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueInsertOrder(batch Batcher, params InsertOrderParams) *QueuedInsertOrder {
+	queued := &QueuedInsertOrder{}
+
+	queuedQuery := batch.Queue(insertOrderSQL, params.OrderDate, params.OrderTotal, params.CustID)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[InsertOrderRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

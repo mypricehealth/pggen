@@ -24,6 +24,14 @@ type Querier interface {
 	Alpha(ctx context.Context) (string, error)
 
 	Bravo(ctx context.Context) (string, error)
+
+	QueueAlphaNested(batch Batcher) *QueuedAlphaNested
+
+	QueueAlphaCompositeArray(batch Batcher) *QueuedAlphaCompositeArray
+
+	QueueAlpha(batch Batcher) *QueuedAlpha
+
+	QueueBravo(batch Batcher) *QueuedBravo
 }
 
 var _ Querier = &DBQuerier{}
@@ -42,14 +50,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 // Alpha represents the Postgres composite type "alpha".
@@ -94,11 +113,6 @@ const alphaNestedSQL = `SELECT 'alpha_nested' as output;`
 // AlphaNested implements Querier.AlphaNested.
 func (q *DBQuerier) AlphaNested(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "AlphaNested")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, alphaNestedSQL)
 	if err != nil {
 		return "", fmt.Errorf("query AlphaNested: %w", q.errWrap(err))
@@ -107,20 +121,119 @@ func (q *DBQuerier) AlphaNested(ctx context.Context) (string, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedAlphaNested struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedAlphaNested) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedAlphaNested) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedAlphaNested) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedAlphaNested) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueAlphaNested implements Querier.QueueAlphaNested.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueAlphaNested(batch Batcher) *QueuedAlphaNested {
+	queued := &QueuedAlphaNested{}
+
+	queuedQuery := batch.Queue(alphaNestedSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const alphaCompositeArraySQL = `SELECT ARRAY[ROW('key')]::alpha[];`
 
 // AlphaCompositeArray implements Querier.AlphaCompositeArray.
 func (q *DBQuerier) AlphaCompositeArray(ctx context.Context) ([]Alpha, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "AlphaCompositeArray")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, alphaCompositeArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query AlphaCompositeArray: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]Alpha])
 	return res, q.errWrap(err)
+}
+
+type QueuedAlphaCompositeArray struct {
+	wrapError func(err error) error
+	onResult  func([]Alpha) error
+}
+
+func (q *QueuedAlphaCompositeArray) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedAlphaCompositeArray) OnResult(onResult func([]Alpha) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedAlphaCompositeArray) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedAlphaCompositeArray) runOnResult(result []Alpha) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueAlphaCompositeArray implements Querier.QueueAlphaCompositeArray.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueAlphaCompositeArray(batch Batcher) *QueuedAlphaCompositeArray {
+	queued := &QueuedAlphaCompositeArray{}
+
+	queuedQuery := batch.Queue(alphaCompositeArraySQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]Alpha])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
