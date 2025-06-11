@@ -52,13 +52,20 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -99,11 +106,6 @@ type CustomTypesRow struct {
 // CustomTypes implements Querier.CustomTypes.
 func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CustomTypes")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return CustomTypesRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, customTypesSQL)
 	if err != nil {
 		return CustomTypesRow{}, fmt.Errorf("query CustomTypes: %w", q.errWrap(err))
@@ -141,15 +143,10 @@ func (q *QueuedCustomTypes) runOnResult(result CustomTypesRow) error {
 	return q.onResult(result)
 }
 
-// CustomTypes implements Batcher.CustomTypes.
+// QueueCustomTypes implements Querier.QueueCustomTypes.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueCustomTypes(batch Batcher) *QueuedCustomTypes {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedCustomTypes{}
 
 	queuedQuery := batch.Queue(customTypesSQL)
@@ -174,11 +171,6 @@ const customMyIntSQL = `SELECT '5'::my_int as int5;`
 // CustomMyInt implements Querier.CustomMyInt.
 func (q *DBQuerier) CustomMyInt(ctx context.Context) (int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CustomMyInt")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return 0, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, customMyIntSQL)
 	if err != nil {
 		return 0, fmt.Errorf("query CustomMyInt: %w", q.errWrap(err))
@@ -216,15 +208,10 @@ func (q *QueuedCustomMyInt) runOnResult(result int) error {
 	return q.onResult(result)
 }
 
-// CustomMyInt implements Batcher.CustomMyInt.
+// QueueCustomMyInt implements Querier.QueueCustomMyInt.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueCustomMyInt(batch Batcher) *QueuedCustomMyInt {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedCustomMyInt{}
 
 	queuedQuery := batch.Queue(customMyIntSQL)
@@ -249,11 +236,6 @@ const intArraySQL = `SELECT ARRAY ['5', '6', '7']::int[] as ints;`
 // IntArray implements Querier.IntArray.
 func (q *DBQuerier) IntArray(ctx context.Context) ([][]int32, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "IntArray")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, intArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query IntArray: %w", q.errWrap(err))
@@ -291,15 +273,10 @@ func (q *QueuedIntArray) runOnResult(result [][]int32) error {
 	return q.onResult(result)
 }
 
-// IntArray implements Batcher.IntArray.
+// QueueIntArray implements Querier.QueueIntArray.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueIntArray(batch Batcher) *QueuedIntArray {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedIntArray{}
 
 	queuedQuery := batch.Queue(intArraySQL)

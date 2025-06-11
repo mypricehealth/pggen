@@ -14,11 +14,6 @@ const alphaSQL = `SELECT 'alpha' as output;`
 // Alpha implements Querier.Alpha.
 func (q *DBQuerier) Alpha(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Alpha")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, alphaSQL)
 	if err != nil {
 		return "", fmt.Errorf("query Alpha: %w", q.errWrap(err))
@@ -56,15 +51,10 @@ func (q *QueuedAlpha) runOnResult(result string) error {
 	return q.onResult(result)
 }
 
-// Alpha implements Batcher.Alpha.
+// QueueAlpha implements Querier.QueueAlpha.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueAlpha(batch Batcher) *QueuedAlpha {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedAlpha{}
 
 	queuedQuery := batch.Queue(alphaSQL)

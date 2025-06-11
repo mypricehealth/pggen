@@ -59,13 +59,20 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 // Arrays represents the Postgres composite type "arrays".
@@ -149,11 +156,6 @@ type SearchScreenshotsRow struct {
 // SearchScreenshots implements Querier.SearchScreenshots.
 func (q *DBQuerier) SearchScreenshots(ctx context.Context, params SearchScreenshotsParams) ([]SearchScreenshotsRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "SearchScreenshots")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, searchScreenshotsSQL, params.Body, params.Limit, params.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("query SearchScreenshots: %w", q.errWrap(err))
@@ -191,15 +193,10 @@ func (q *QueuedSearchScreenshots) runOnResult(result []SearchScreenshotsRow) err
 	return q.onResult(result)
 }
 
-// SearchScreenshots implements Batcher.SearchScreenshots.
+// QueueSearchScreenshots implements Querier.QueueSearchScreenshots.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueSearchScreenshots(batch Batcher, params SearchScreenshotsParams) *QueuedSearchScreenshots {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedSearchScreenshots{}
 
 	queuedQuery := batch.Queue(searchScreenshotsSQL, params.Body, params.Limit, params.Offset)
@@ -237,11 +234,6 @@ type SearchScreenshotsOneColParams struct {
 // SearchScreenshotsOneCol implements Querier.SearchScreenshotsOneCol.
 func (q *DBQuerier) SearchScreenshotsOneCol(ctx context.Context, params SearchScreenshotsOneColParams) ([][]Blocks, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "SearchScreenshotsOneCol")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, searchScreenshotsOneColSQL, params.Body, params.Limit, params.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("query SearchScreenshotsOneCol: %w", q.errWrap(err))
@@ -279,15 +271,10 @@ func (q *QueuedSearchScreenshotsOneCol) runOnResult(result [][]Blocks) error {
 	return q.onResult(result)
 }
 
-// SearchScreenshotsOneCol implements Batcher.SearchScreenshotsOneCol.
+// QueueSearchScreenshotsOneCol implements Querier.QueueSearchScreenshotsOneCol.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueSearchScreenshotsOneCol(batch Batcher, params SearchScreenshotsOneColParams) *QueuedSearchScreenshotsOneCol {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedSearchScreenshotsOneCol{}
 
 	queuedQuery := batch.Queue(searchScreenshotsOneColSQL, params.Body, params.Limit, params.Offset)
@@ -325,11 +312,6 @@ type InsertScreenshotBlocksRow struct {
 // InsertScreenshotBlocks implements Querier.InsertScreenshotBlocks.
 func (q *DBQuerier) InsertScreenshotBlocks(ctx context.Context, screenshotID int, body string) (InsertScreenshotBlocksRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertScreenshotBlocks")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return InsertScreenshotBlocksRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, insertScreenshotBlocksSQL, screenshotID, body)
 	if err != nil {
 		return InsertScreenshotBlocksRow{}, fmt.Errorf("query InsertScreenshotBlocks: %w", q.errWrap(err))
@@ -367,15 +349,10 @@ func (q *QueuedInsertScreenshotBlocks) runOnResult(result InsertScreenshotBlocks
 	return q.onResult(result)
 }
 
-// InsertScreenshotBlocks implements Batcher.InsertScreenshotBlocks.
+// QueueInsertScreenshotBlocks implements Querier.QueueInsertScreenshotBlocks.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueInsertScreenshotBlocks(batch Batcher, screenshotID int, body string) *QueuedInsertScreenshotBlocks {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedInsertScreenshotBlocks{}
 
 	queuedQuery := batch.Queue(insertScreenshotBlocksSQL, screenshotID, body)
@@ -400,11 +377,6 @@ const arraysInputSQL = `SELECT $1::arrays;`
 // ArraysInput implements Querier.ArraysInput.
 func (q *DBQuerier) ArraysInput(ctx context.Context, arrays Arrays) (Arrays, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ArraysInput")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return Arrays{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, arraysInputSQL, arrays)
 	if err != nil {
 		return Arrays{}, fmt.Errorf("query ArraysInput: %w", q.errWrap(err))
@@ -442,15 +414,10 @@ func (q *QueuedArraysInput) runOnResult(result Arrays) error {
 	return q.onResult(result)
 }
 
-// ArraysInput implements Batcher.ArraysInput.
+// QueueArraysInput implements Querier.QueueArraysInput.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueArraysInput(batch Batcher, arrays Arrays) *QueuedArraysInput {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedArraysInput{}
 
 	queuedQuery := batch.Queue(arraysInputSQL, arrays)
@@ -475,11 +442,6 @@ const userEmailsSQL = `SELECT ('foo', 'bar@example.com')::user_email;`
 // UserEmails implements Querier.UserEmails.
 func (q *DBQuerier) UserEmails(ctx context.Context) (UserEmail, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "UserEmails")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return UserEmail{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, userEmailsSQL)
 	if err != nil {
 		return UserEmail{}, fmt.Errorf("query UserEmails: %w", q.errWrap(err))
@@ -517,15 +479,10 @@ func (q *QueuedUserEmails) runOnResult(result UserEmail) error {
 	return q.onResult(result)
 }
 
-// UserEmails implements Batcher.UserEmails.
+// QueueUserEmails implements Querier.QueueUserEmails.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueUserEmails(batch Batcher) *QueuedUserEmails {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedUserEmails{}
 
 	queuedQuery := batch.Queue(userEmailsSQL)

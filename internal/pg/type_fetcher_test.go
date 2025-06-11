@@ -10,6 +10,7 @@ import (
 	"github.com/mypricehealth/pggen/internal/pg/pgoid"
 	"github.com/mypricehealth/pggen/internal/pgtest"
 	"github.com/mypricehealth/pggen/internal/texts"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewTypeFetcher(t *testing.T) {
@@ -191,10 +192,13 @@ func TestNewTypeFetcher(t *testing.T) {
 			conn, cleanup := pgtest.NewPostgresSchemaString(t, tt.schema)
 			defer cleanup()
 
-			querier := NewQuerier(conn)
+			ctx := context.Background()
+			querier, err := NewQuerier(ctx, conn)
+			require.NoError(t, err)
 
 			// Act.
-			fetcher := NewTypeFetcher(conn)
+			fetcher, err := NewTypeFetcher(ctx, conn)
+			require.NoError(t, err)
 
 			oid := findOIDVal(t, tt.fetchOID, querier)
 			gotTypeMap, err := fetcher.FindTypesByOIDs(uint32(oid))

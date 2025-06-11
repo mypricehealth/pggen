@@ -43,13 +43,20 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -85,11 +92,6 @@ const domainOneSQL = `SELECT '90210'::us_postal_code;`
 // DomainOne implements Querier.DomainOne.
 func (q *DBQuerier) DomainOne(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "DomainOne")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, domainOneSQL)
 	if err != nil {
 		return "", fmt.Errorf("query DomainOne: %w", q.errWrap(err))
@@ -127,15 +129,10 @@ func (q *QueuedDomainOne) runOnResult(result string) error {
 	return q.onResult(result)
 }
 
-// DomainOne implements Batcher.DomainOne.
+// QueueDomainOne implements Querier.QueueDomainOne.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueDomainOne(batch Batcher) *QueuedDomainOne {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedDomainOne{}
 
 	queuedQuery := batch.Queue(domainOneSQL)

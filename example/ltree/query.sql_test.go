@@ -14,8 +14,9 @@ func TestQuerier(t *testing.T) {
 	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
 	defer cleanup()
 
-	q := NewQuerier(conn)
 	ctx := context.Background()
+	q, err := NewQuerier(ctx, conn)
+	require.NoError(t, err)
 
 	if _, err := q.InsertSampleData(ctx); err != nil {
 		t.Fatal(err)

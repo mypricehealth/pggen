@@ -17,7 +17,10 @@ func TestNewQuerier_FindOrdersByCustomer(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	q := NewQuerier(conn)
+	ctx = context.Background()
+	q, err := NewQuerier(ctx, conn)
+	require.NoError(t, err)
+
 	cust1, err := q.InsertCustomer(ctx, InsertCustomerParams{
 		FirstName: "foo_first",
 		LastName:  "foo_last",
@@ -52,7 +55,13 @@ func TestNewQuerier_FindOrdersByCustomer(t *testing.T) {
 }
 
 func TestNewQuerier_QuerierMatchesDBQuerier(t *testing.T) {
-	var q Querier = NewQuerier(nil)
+	conn, cleanup := pgtest.NewPostgresSchemaString(t, "")
+	defer cleanup()
+
+	ctx := context.Background()
+	q, err := NewQuerier(ctx, conn)
+	require.NoError(t, err)
+
 	require.NotNil(t, q.FindOrdersByCustomer)
 	require.NotNil(t, q.FindProductsInOrder)
 	require.NotNil(t, q.InsertOrder)

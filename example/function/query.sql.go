@@ -43,13 +43,20 @@ type Batcher interface {
 }
 
 // NewQuerier creates a DBQuerier
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 // ListItem represents the Postgres composite type "list_item".
@@ -108,11 +115,6 @@ type OutParamsRow struct {
 // OutParams implements Querier.OutParams.
 func (q *DBQuerier) OutParams(ctx context.Context) ([]OutParamsRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "OutParams")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, outParamsSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query OutParams: %w", q.errWrap(err))
@@ -150,15 +152,10 @@ func (q *QueuedOutParams) runOnResult(result []OutParamsRow) error {
 	return q.onResult(result)
 }
 
-// OutParams implements Batcher.OutParams.
+// QueueOutParams implements Querier.QueueOutParams.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueOutParams(batch Batcher) *QueuedOutParams {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedOutParams{}
 
 	queuedQuery := batch.Queue(outParamsSQL)

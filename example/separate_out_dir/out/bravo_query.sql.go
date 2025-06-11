@@ -14,11 +14,6 @@ const bravoSQL = `SELECT 'bravo' as output;`
 // Bravo implements Querier.Bravo.
 func (q *DBQuerier) Bravo(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Bravo")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, bravoSQL)
 	if err != nil {
 		return "", fmt.Errorf("query Bravo: %w", q.errWrap(err))
@@ -56,15 +51,10 @@ func (q *QueuedBravo) runOnResult(result string) error {
 	return q.onResult(result)
 }
 
-// Bravo implements Batcher.Bravo.
+// QueueBravo implements Querier.QueueBravo.
 //
 //nolint:contextcheck
 func (q *DBQuerier) QueueBravo(batch Batcher) *QueuedBravo {
-	err := registerTypes(context.Background(), q.conn)
-	if err != nil {
-		panic(q.errWrap(fmt.Errorf("could not register types: %w", err)))
-	}
-
 	queued := &QueuedBravo{}
 
 	queuedQuery := batch.Queue(bravoSQL)
