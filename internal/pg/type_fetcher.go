@@ -115,6 +115,7 @@ func (tf *TypeFetcher) findEnumTypes(ctx context.Context, uncached map[uint32]st
 		}
 		types[i] = EnumType{
 			ID:        enum.OID,
+			Schema:    enum.NamespaceName,
 			Name:      enum.TypeName,
 			Labels:    enum.Labels,
 			Orders:    enum.Orders,
@@ -159,8 +160,8 @@ func (tf *TypeFetcher) findCompositeTypes(ctx context.Context, uncached map[uint
 		}
 		typ := CompositeType{
 			ID:          row.TableTypeOID,
-			Name:        row.TableName,
 			Schema:      row.TableNamespaceName,
+			Name:        row.TableName,
 			ColumnNames: colNames,
 			ColumnTypes: colTypes,
 		}
@@ -180,6 +181,7 @@ func (tf *TypeFetcher) findUnknownTypes(ctx context.Context, uncached map[uint32
 	for i, row := range rows {
 		types[i] = UnknownType{
 			ID:     row.OID,
+			Schema: row.NamespaceName,
 			Name:   row.Name,
 			PgKind: TypeKind(row.Kind),
 		}

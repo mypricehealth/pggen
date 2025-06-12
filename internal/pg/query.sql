@@ -23,6 +23,8 @@ SELECT
   typ.oid           AS oid,
   -- typename: Data type name.
   typ.typname::text AS type_name,
+  nsp.nspname::text AS namespace_name,
+  nsp.oid           AS namespace_oid,
   enum.enum_oids    AS child_oids,
   enum.enum_orders  AS orders,
   enum.enum_labels  AS labels,
@@ -38,6 +40,7 @@ SELECT
   -- to the type's input converter to produce a constant.
   COALESCE(typ.typdefault, '')    AS default_expr
 FROM pg_type typ
+  JOIN pg_namespace nsp ON typ.typnamespace = nsp.oid
   JOIN enums enum ON typ.oid = enum.enum_type
 WHERE typ.typisdefined
   AND typ.typtype = 'e'
@@ -158,6 +161,11 @@ FROM pg_type
 WHERE oid = pggen.arg('oid');
 
 -- name: FindOIDNames :many
-SELECT oid, typname AS name, typtype AS kind
-FROM pg_type
-WHERE oid = ANY (pggen.arg('oid')::oid[]);
+SELECT
+    typ.oid,
+    nsp.nspname AS namespace_name,
+    typname     AS name,
+    typtype     AS kind
+FROM pg_type typ
+  JOIN pg_namespace nsp ON typ.typnamespace = nsp.oid
+WHERE typ.oid = ANY (pggen.arg('oid')::oid[]);

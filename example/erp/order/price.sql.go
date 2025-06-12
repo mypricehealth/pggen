@@ -61,8 +61,6 @@ func (q *QueuedFindOrdersByPrice) runOnResult(result []FindOrdersByPriceRow) err
 }
 
 // QueueFindOrdersByPrice implements Querier.QueueFindOrdersByPrice.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOrdersByPrice(batch Batcher, minTotal decimal.Decimal) *QueuedFindOrdersByPrice {
 	queued := &QueuedFindOrdersByPrice{}
 
@@ -133,8 +131,6 @@ func (q *QueuedFindOrdersMRR) runOnResult(result []FindOrdersMRRRow) error {
 }
 
 // QueueFindOrdersMRR implements Querier.QueueFindOrdersMRR.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOrdersMRR(batch Batcher) *QueuedFindOrdersMRR {
 	queued := &QueuedFindOrdersMRR{}
 

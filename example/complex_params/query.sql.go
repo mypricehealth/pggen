@@ -5,7 +5,6 @@ package complex_params
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
@@ -51,7 +50,7 @@ type genericConn interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
-	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+	LoadTypes(ctx context.Context, typeNames []string) ([]*pgtype.Type, error)
 }
 
 type Batcher interface {
@@ -64,7 +63,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -94,25 +93,38 @@ type ProductImageType struct {
 	Dimensions Dimensions `json:"dimensions"`
 }
 
-var registerOnce sync.Once
-var registerErr error
-
 func registerTypes(ctx context.Context, conn genericConn) error {
-	registerOnce.Do(func() {
-		typeMap := conn.TypeMap()
+	typeMap := conn.TypeMap()
 
-		pgxdecimal.Register(typeMap)
-		for _, typ := range typesToRegister {
-			dt, err := conn.LoadType(ctx, typ)
-			if err != nil {
-				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
-				return
-			}
-			typeMap.RegisterType(dt)
+	// The work pgxdecimal.Register does involves no queries so it may as well
+	// be free.
+	pgxdecimal.Register(typeMap)
+
+	// Make sure to only register the necessary types. This is really only
+	// important for the frequent path of _no_ registrations necessary which
+	// would cause an unnecessary extra roundtrip on every query.
+	needsRegistering := make([]string, 0, len(typesToRegister))
+	for _, typeName := range typesToRegister {
+		_, exists := typeMap.TypeForName(typeName)
+		if exists {
+			continue
 		}
-	})
 
-	return registerErr
+		needsRegistering = append(needsRegistering, typeName)
+	}
+
+	if len(needsRegistering) == 0 {
+		return nil
+	}
+
+	types, err := conn.LoadTypes(ctx, needsRegistering)
+	if err != nil {
+		return fmt.Errorf("could not register types: %w", err)
+	}
+
+	typeMap.RegisterTypes(types)
+
+	return nil
 }
 
 var typesToRegister = []string{}
@@ -128,6 +140,7 @@ var _ = addTypeToRegister("public.product_image_set_type")
 
 var _ = addTypeToRegister("public.product_image_type")
 
+var _ = addTypeToRegister("public.product_image_type")
 var _ = addTypeToRegister("public._product_image_type")
 
 const paramArrayIntSQL = `SELECT $1::bigint[];`
@@ -173,8 +186,6 @@ func (q *QueuedParamArrayInt) runOnResult(result []int) error {
 }
 
 // QueueParamArrayInt implements Querier.QueueParamArrayInt.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamArrayInt(batch Batcher, ints []int) *QueuedParamArrayInt {
 	queued := &QueuedParamArrayInt{}
 
@@ -238,8 +249,6 @@ func (q *QueuedParamNested1) runOnResult(result Dimensions) error {
 }
 
 // QueueParamNested1 implements Querier.QueueParamNested1.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamNested1(batch Batcher, dimensions Dimensions) *QueuedParamNested1 {
 	queued := &QueuedParamNested1{}
 
@@ -303,8 +312,6 @@ func (q *QueuedParamNested2) runOnResult(result ProductImageType) error {
 }
 
 // QueueParamNested2 implements Querier.QueueParamNested2.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamNested2(batch Batcher, image ProductImageType) *QueuedParamNested2 {
 	queued := &QueuedParamNested2{}
 
@@ -368,8 +375,6 @@ func (q *QueuedParamNested2Array) runOnResult(result []ProductImageType) error {
 }
 
 // QueueParamNested2Array implements Querier.QueueParamNested2Array.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamNested2Array(batch Batcher, images []ProductImageType) *QueuedParamNested2Array {
 	queued := &QueuedParamNested2Array{}
 
@@ -433,8 +438,6 @@ func (q *QueuedParamNested3) runOnResult(result ProductImageSetType) error {
 }
 
 // QueueParamNested3 implements Querier.QueueParamNested3.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamNested3(batch Batcher, imageSet ProductImageSetType) *QueuedParamNested3 {
 	queued := &QueuedParamNested3{}
 
