@@ -73,7 +73,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -176,8 +176,6 @@ func (q *QueuedCreateTenant) runOnResult(result CreateTenantRow) error {
 }
 
 // QueueCreateTenant implements Querier.QueueCreateTenant.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueCreateTenant(batch Batcher, key string, name string) *QueuedCreateTenant {
 	queued := &QueuedCreateTenant{}
 
@@ -250,8 +248,6 @@ func (q *QueuedFindOrdersByCustomer) runOnResult(result []FindOrdersByCustomerRo
 }
 
 // QueueFindOrdersByCustomer implements Querier.QueueFindOrdersByCustomer.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOrdersByCustomer(batch Batcher, customerID int32) *QueuedFindOrdersByCustomer {
 	queued := &QueuedFindOrdersByCustomer{}
 
@@ -325,8 +321,6 @@ func (q *QueuedFindProductsInOrder) runOnResult(result []FindProductsInOrderRow)
 }
 
 // QueueFindProductsInOrder implements Querier.QueueFindProductsInOrder.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindProductsInOrder(batch Batcher, orderID int32) *QueuedFindProductsInOrder {
 	queued := &QueuedFindProductsInOrder{}
 
@@ -405,8 +399,6 @@ func (q *QueuedInsertCustomer) runOnResult(result InsertCustomerRow) error {
 }
 
 // QueueInsertCustomer implements Querier.QueueInsertCustomer.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertCustomer(batch Batcher, params InsertCustomerParams) *QueuedInsertCustomer {
 	queued := &QueuedInsertCustomer{}
 
@@ -485,8 +477,6 @@ func (q *QueuedInsertOrder) runOnResult(result InsertOrderRow) error {
 }
 
 // QueueInsertOrder implements Querier.QueueInsertOrder.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertOrder(batch Batcher, params InsertOrderParams) *QueuedInsertOrder {
 	queued := &QueuedInsertOrder{}
 

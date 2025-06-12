@@ -63,7 +63,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -207,8 +207,6 @@ func (q *QueuedSearchScreenshots) runOnResult(result []SearchScreenshotsRow) err
 }
 
 // QueueSearchScreenshots implements Querier.QueueSearchScreenshots.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueSearchScreenshots(batch Batcher, params SearchScreenshotsParams) *QueuedSearchScreenshots {
 	queued := &QueuedSearchScreenshots{}
 
@@ -285,8 +283,6 @@ func (q *QueuedSearchScreenshotsOneCol) runOnResult(result [][]Blocks) error {
 }
 
 // QueueSearchScreenshotsOneCol implements Querier.QueueSearchScreenshotsOneCol.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueSearchScreenshotsOneCol(batch Batcher, params SearchScreenshotsOneColParams) *QueuedSearchScreenshotsOneCol {
 	queued := &QueuedSearchScreenshotsOneCol{}
 
@@ -363,8 +359,6 @@ func (q *QueuedInsertScreenshotBlocks) runOnResult(result InsertScreenshotBlocks
 }
 
 // QueueInsertScreenshotBlocks implements Querier.QueueInsertScreenshotBlocks.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertScreenshotBlocks(batch Batcher, screenshotID int, body string) *QueuedInsertScreenshotBlocks {
 	queued := &QueuedInsertScreenshotBlocks{}
 
@@ -428,8 +422,6 @@ func (q *QueuedArraysInput) runOnResult(result Arrays) error {
 }
 
 // QueueArraysInput implements Querier.QueueArraysInput.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueArraysInput(batch Batcher, arrays Arrays) *QueuedArraysInput {
 	queued := &QueuedArraysInput{}
 
@@ -493,8 +485,6 @@ func (q *QueuedUserEmails) runOnResult(result UserEmail) error {
 }
 
 // QueueUserEmails implements Querier.QueueUserEmails.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueUserEmails(batch Batcher) *QueuedUserEmails {
 	queued := &QueuedUserEmails{}
 

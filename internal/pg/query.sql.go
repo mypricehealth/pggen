@@ -81,7 +81,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -233,8 +233,6 @@ func (q *QueuedFindEnumTypes) runOnResult(result []FindEnumTypesRow) error {
 }
 
 // QueueFindEnumTypes implements Querier.QueueFindEnumTypes.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindEnumTypes(batch Batcher, oids []uint32) *QueuedFindEnumTypes {
 	queued := &QueuedFindEnumTypes{}
 
@@ -337,8 +335,6 @@ func (q *QueuedFindArrayTypes) runOnResult(result []FindArrayTypesRow) error {
 }
 
 // QueueFindArrayTypes implements Querier.QueueFindArrayTypes.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindArrayTypes(batch Batcher, oids []uint32) *QueuedFindArrayTypes {
 	queued := &QueuedFindArrayTypes{}
 
@@ -446,8 +442,6 @@ func (q *QueuedFindCompositeTypes) runOnResult(result []FindCompositeTypesRow) e
 }
 
 // QueueFindCompositeTypes implements Querier.QueueFindCompositeTypes.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindCompositeTypes(batch Batcher, oids []uint32) *QueuedFindCompositeTypes {
 	queued := &QueuedFindCompositeTypes{}
 
@@ -537,8 +531,6 @@ func (q *QueuedFindDescendantOIDs) runOnResult(result []uint32) error {
 }
 
 // QueueFindDescendantOIDs implements Querier.QueueFindDescendantOIDs.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindDescendantOIDs(batch Batcher, oids []uint32) *QueuedFindDescendantOIDs {
 	queued := &QueuedFindDescendantOIDs{}
 
@@ -606,8 +598,6 @@ func (q *QueuedFindOIDByName) runOnResult(result uint32) error {
 }
 
 // QueueFindOIDByName implements Querier.QueueFindOIDByName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOIDByName(batch Batcher, name string) *QueuedFindOIDByName {
 	queued := &QueuedFindOIDByName{}
 
@@ -673,8 +663,6 @@ func (q *QueuedFindOIDName) runOnResult(result string) error {
 }
 
 // QueueFindOIDName implements Querier.QueueFindOIDName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOIDName(batch Batcher, oid uint32) *QueuedFindOIDName {
 	queued := &QueuedFindOIDName{}
 
@@ -752,8 +740,6 @@ func (q *QueuedFindOIDNames) runOnResult(result []FindOIDNamesRow) error {
 }
 
 // QueueFindOIDNames implements Querier.QueueFindOIDNames.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOIDNames(batch Batcher, oid []uint32) *QueuedFindOIDNames {
 	queued := &QueuedFindOIDNames{}
 

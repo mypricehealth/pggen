@@ -59,7 +59,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -156,8 +156,6 @@ func (q *QueuedFindTopScienceChildren) runOnResult(result []pgtype.Text) error {
 }
 
 // QueueFindTopScienceChildren implements Querier.QueueFindTopScienceChildren.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindTopScienceChildren(batch Batcher) *QueuedFindTopScienceChildren {
 	queued := &QueuedFindTopScienceChildren{}
 
@@ -223,8 +221,6 @@ func (q *QueuedFindTopScienceChildrenAgg) runOnResult(result pgtype.TextArray) e
 }
 
 // QueueFindTopScienceChildrenAgg implements Querier.QueueFindTopScienceChildrenAgg.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindTopScienceChildrenAgg(batch Batcher) *QueuedFindTopScienceChildrenAgg {
 	queued := &QueuedFindTopScienceChildrenAgg{}
 
@@ -300,8 +296,6 @@ func (q *QueuedInsertSampleData) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueInsertSampleData implements Querier.QueueInsertSampleData.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertSampleData(batch Batcher) *QueuedInsertSampleData {
 	queued := &QueuedInsertSampleData{}
 
@@ -375,8 +369,6 @@ func (q *QueuedFindLtreeInput) runOnResult(result FindLtreeInputRow) error {
 }
 
 // QueueFindLtreeInput implements Querier.QueueFindLtreeInput.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindLtreeInput(batch Batcher, inLtree pgtype.Text, inLtreeArray []string) *QueuedFindLtreeInput {
 	queued := &QueuedFindLtreeInput{}
 

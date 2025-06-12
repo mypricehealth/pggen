@@ -47,7 +47,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -166,8 +166,6 @@ func (q *QueuedOutParams) runOnResult(result []OutParamsRow) error {
 }
 
 // QueueOutParams implements Querier.QueueOutParams.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueOutParams(batch Batcher) *QueuedOutParams {
 	queued := &QueuedOutParams{}
 

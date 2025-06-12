@@ -72,7 +72,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -200,8 +200,6 @@ func (q *QueuedFindDevicesByUser) runOnResult(result []FindDevicesByUserRow) err
 }
 
 // QueueFindDevicesByUser implements Querier.QueueFindDevicesByUser.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindDevicesByUser(batch Batcher, id int) *QueuedFindDevicesByUser {
 	queued := &QueuedFindDevicesByUser{}
 
@@ -276,8 +274,6 @@ func (q *QueuedCompositeUser) runOnResult(result []CompositeUserRow) error {
 }
 
 // QueueCompositeUser implements Querier.QueueCompositeUser.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueCompositeUser(batch Batcher) *QueuedCompositeUser {
 	queued := &QueuedCompositeUser{}
 
@@ -341,8 +337,6 @@ func (q *QueuedCompositeUserOne) runOnResult(result User) error {
 }
 
 // QueueCompositeUserOne implements Querier.QueueCompositeUserOne.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueCompositeUserOne(batch Batcher) *QueuedCompositeUserOne {
 	queued := &QueuedCompositeUserOne{}
 
@@ -411,8 +405,6 @@ func (q *QueuedCompositeUserOneTwoCols) runOnResult(result CompositeUserOneTwoCo
 }
 
 // QueueCompositeUserOneTwoCols implements Querier.QueueCompositeUserOneTwoCols.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueCompositeUserOneTwoCols(batch Batcher) *QueuedCompositeUserOneTwoCols {
 	queued := &QueuedCompositeUserOneTwoCols{}
 
@@ -476,8 +468,6 @@ func (q *QueuedCompositeUserMany) runOnResult(result []User) error {
 }
 
 // QueueCompositeUserMany implements Querier.QueueCompositeUserMany.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueCompositeUserMany(batch Batcher) *QueuedCompositeUserMany {
 	queued := &QueuedCompositeUserMany{}
 
@@ -541,8 +531,6 @@ func (q *QueuedInsertUser) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueInsertUser implements Querier.QueueInsertUser.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertUser(batch Batcher, userID int, name string) *QueuedInsertUser {
 	queued := &QueuedInsertUser{}
 
@@ -602,8 +590,6 @@ func (q *QueuedInsertDevice) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueInsertDevice implements Querier.QueueInsertDevice.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertDevice(batch Batcher, mac net.HardwareAddr, owner int) *QueuedInsertDevice {
 	queued := &QueuedInsertDevice{}
 

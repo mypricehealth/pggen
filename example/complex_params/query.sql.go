@@ -63,7 +63,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -186,8 +186,6 @@ func (q *QueuedParamArrayInt) runOnResult(result []int) error {
 }
 
 // QueueParamArrayInt implements Querier.QueueParamArrayInt.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamArrayInt(batch Batcher, ints []int) *QueuedParamArrayInt {
 	queued := &QueuedParamArrayInt{}
 
@@ -251,8 +249,6 @@ func (q *QueuedParamNested1) runOnResult(result Dimensions) error {
 }
 
 // QueueParamNested1 implements Querier.QueueParamNested1.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamNested1(batch Batcher, dimensions Dimensions) *QueuedParamNested1 {
 	queued := &QueuedParamNested1{}
 
@@ -316,8 +312,6 @@ func (q *QueuedParamNested2) runOnResult(result ProductImageType) error {
 }
 
 // QueueParamNested2 implements Querier.QueueParamNested2.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamNested2(batch Batcher, image ProductImageType) *QueuedParamNested2 {
 	queued := &QueuedParamNested2{}
 
@@ -381,8 +375,6 @@ func (q *QueuedParamNested2Array) runOnResult(result []ProductImageType) error {
 }
 
 // QueueParamNested2Array implements Querier.QueueParamNested2Array.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamNested2Array(batch Batcher, images []ProductImageType) *QueuedParamNested2Array {
 	queued := &QueuedParamNested2Array{}
 
@@ -446,8 +438,6 @@ func (q *QueuedParamNested3) runOnResult(result ProductImageSetType) error {
 }
 
 // QueueParamNested3 implements Querier.QueueParamNested3.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueParamNested3(batch Batcher, imageSet ProductImageSetType) *QueuedParamNested3 {
 	queued := &QueuedParamNested3{}
 

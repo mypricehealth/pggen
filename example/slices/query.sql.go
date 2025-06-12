@@ -60,7 +60,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -155,8 +155,6 @@ func (q *QueuedGetBools) runOnResult(result []bool) error {
 }
 
 // QueueGetBools implements Querier.QueueGetBools.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGetBools(batch Batcher, data []bool) *QueuedGetBools {
 	queued := &QueuedGetBools{}
 
@@ -220,8 +218,6 @@ func (q *QueuedGetOneTimestamp) runOnResult(result *time.Time) error {
 }
 
 // QueueGetOneTimestamp implements Querier.QueueGetOneTimestamp.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGetOneTimestamp(batch Batcher, data *time.Time) *QueuedGetOneTimestamp {
 	queued := &QueuedGetOneTimestamp{}
 
@@ -286,8 +282,6 @@ func (q *QueuedGetManyTimestamptzs) runOnResult(result []*time.Time) error {
 }
 
 // QueueGetManyTimestamptzs implements Querier.QueueGetManyTimestamptzs.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGetManyTimestamptzs(batch Batcher, data []time.Time) *QueuedGetManyTimestamptzs {
 	queued := &QueuedGetManyTimestamptzs{}
 
@@ -352,8 +346,6 @@ func (q *QueuedGetManyTimestamps) runOnResult(result []*time.Time) error {
 }
 
 // QueueGetManyTimestamps implements Querier.QueueGetManyTimestamps.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGetManyTimestamps(batch Batcher, data []*time.Time) *QueuedGetManyTimestamps {
 	queued := &QueuedGetManyTimestamps{}
 

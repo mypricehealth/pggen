@@ -76,7 +76,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -202,8 +202,6 @@ func (q *QueuedFindAllDevices) runOnResult(result []FindAllDevicesRow) error {
 }
 
 // QueueFindAllDevices implements Querier.QueueFindAllDevices.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindAllDevices(batch Batcher) *QueuedFindAllDevices {
 	queued := &QueuedFindAllDevices{}
 
@@ -267,8 +265,6 @@ func (q *QueuedInsertDevice) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueInsertDevice implements Querier.QueueInsertDevice.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertDevice(batch Batcher, mac net.HardwareAddr, typePg DeviceType) *QueuedInsertDevice {
 	queued := &QueuedInsertDevice{}
 
@@ -328,8 +324,6 @@ func (q *QueuedFindOneDeviceArray) runOnResult(result []DeviceType) error {
 }
 
 // QueueFindOneDeviceArray implements Querier.QueueFindOneDeviceArray.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOneDeviceArray(batch Batcher) *QueuedFindOneDeviceArray {
 	queued := &QueuedFindOneDeviceArray{}
 
@@ -395,8 +389,6 @@ func (q *QueuedFindManyDeviceArray) runOnResult(result [][]DeviceType) error {
 }
 
 // QueueFindManyDeviceArray implements Querier.QueueFindManyDeviceArray.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindManyDeviceArray(batch Batcher) *QueuedFindManyDeviceArray {
 	queued := &QueuedFindManyDeviceArray{}
 
@@ -467,8 +459,6 @@ func (q *QueuedFindManyDeviceArrayWithNum) runOnResult(result []FindManyDeviceAr
 }
 
 // QueueFindManyDeviceArrayWithNum implements Querier.QueueFindManyDeviceArrayWithNum.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindManyDeviceArrayWithNum(batch Batcher) *QueuedFindManyDeviceArrayWithNum {
 	queued := &QueuedFindManyDeviceArrayWithNum{}
 
@@ -532,8 +522,6 @@ func (q *QueuedEnumInsideComposite) runOnResult(result Device) error {
 }
 
 // QueueEnumInsideComposite implements Querier.QueueEnumInsideComposite.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueEnumInsideComposite(batch Batcher) *QueuedEnumInsideComposite {
 	queued := &QueuedEnumInsideComposite{}
 

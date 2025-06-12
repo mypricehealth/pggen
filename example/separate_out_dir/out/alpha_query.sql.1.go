@@ -52,8 +52,6 @@ func (q *QueuedAlpha) runOnResult(result string) error {
 }
 
 // QueueAlpha implements Querier.QueueAlpha.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueAlpha(batch Batcher) *QueuedAlpha {
 	queued := &QueuedAlpha{}
 

@@ -69,7 +69,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	};
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -147,7 +147,6 @@ func (q *Queued{{ $q.Name }}) runOnResult(result {{ $q.EmitResultType }}) error 
 }
 
 // Queue{{ $q.Name }} implements Querier.Queue{{ $q.Name }}.
-//nolint:contextcheck
 func (q *DBQuerier) Queue{{ $q.Name }}(batch Batcher {{- $q.EmitParams }}) *Queued{{ $q.Name }} {
 	queued := &Queued{{ $q.Name }}{}
 

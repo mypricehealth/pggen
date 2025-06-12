@@ -95,7 +95,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -202,8 +202,6 @@ func (q *QueuedBacktick) runOnResult(result string) error {
 }
 
 // QueueBacktick implements Querier.QueueBacktick.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktick(batch Batcher) *QueuedBacktick {
 	queued := &QueuedBacktick{}
 
@@ -267,8 +265,6 @@ func (q *QueuedBacktickQuoteBacktick) runOnResult(result string) error {
 }
 
 // QueueBacktickQuoteBacktick implements Querier.QueueBacktickQuoteBacktick.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickQuoteBacktick(batch Batcher) *QueuedBacktickQuoteBacktick {
 	queued := &QueuedBacktickQuoteBacktick{}
 
@@ -332,8 +328,6 @@ func (q *QueuedBacktickNewline) runOnResult(result string) error {
 }
 
 // QueueBacktickNewline implements Querier.QueueBacktickNewline.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickNewline(batch Batcher) *QueuedBacktickNewline {
 	queued := &QueuedBacktickNewline{}
 
@@ -397,8 +391,6 @@ func (q *QueuedBacktickDoubleQuote) runOnResult(result string) error {
 }
 
 // QueueBacktickDoubleQuote implements Querier.QueueBacktickDoubleQuote.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickDoubleQuote(batch Batcher) *QueuedBacktickDoubleQuote {
 	queued := &QueuedBacktickDoubleQuote{}
 
@@ -462,8 +454,6 @@ func (q *QueuedBacktickBackslashN) runOnResult(result string) error {
 }
 
 // QueueBacktickBackslashN implements Querier.QueueBacktickBackslashN.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickBackslashN(batch Batcher) *QueuedBacktickBackslashN {
 	queued := &QueuedBacktickBackslashN{}
 
@@ -532,8 +522,6 @@ func (q *QueuedIllegalNameSymbols) runOnResult(result IllegalNameSymbolsRow) err
 }
 
 // QueueIllegalNameSymbols implements Querier.QueueIllegalNameSymbols.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueIllegalNameSymbols(batch Batcher, helloWorld string) *QueuedIllegalNameSymbols {
 	queued := &QueuedIllegalNameSymbols{}
 
@@ -597,8 +585,6 @@ func (q *QueuedSpaceAfter) runOnResult(result string) error {
 }
 
 // QueueSpaceAfter implements Querier.QueueSpaceAfter.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueSpaceAfter(batch Batcher, space string) *QueuedSpaceAfter {
 	queued := &QueuedSpaceAfter{}
 
@@ -662,8 +648,6 @@ func (q *QueuedBadEnumName) runOnResult(result UnnamedEnum123) error {
 }
 
 // QueueBadEnumName implements Querier.QueueBadEnumName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBadEnumName(batch Batcher) *QueuedBadEnumName {
 	queued := &QueuedBadEnumName{}
 
@@ -727,8 +711,6 @@ func (q *QueuedGoKeyword) runOnResult(result string) error {
 }
 
 // QueueGoKeyword implements Querier.QueueGoKeyword.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGoKeyword(batch Batcher, go_ string) *QueuedGoKeyword {
 	queued := &QueuedGoKeyword{}
 

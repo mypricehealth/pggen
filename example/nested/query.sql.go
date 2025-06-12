@@ -51,7 +51,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -178,8 +178,6 @@ func (q *QueuedArrayNested2) runOnResult(result []ProductImageType) error {
 }
 
 // QueueArrayNested2 implements Querier.QueueArrayNested2.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueArrayNested2(batch Batcher) *QueuedArrayNested2 {
 	queued := &QueuedArrayNested2{}
 
@@ -251,8 +249,6 @@ func (q *QueuedNested3) runOnResult(result []ProductImageSetType) error {
 }
 
 // QueueNested3 implements Querier.QueueNested3.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueNested3(batch Batcher) *QueuedNested3 {
 	queued := &QueuedNested3{}
 

@@ -67,7 +67,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -164,8 +164,6 @@ func (q *QueuedGenSeries1) runOnResult(result *int) error {
 }
 
 // QueueGenSeries1 implements Querier.QueueGenSeries1.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeries1(batch Batcher) *QueuedGenSeries1 {
 	queued := &QueuedGenSeries1{}
 
@@ -230,8 +228,6 @@ func (q *QueuedGenSeries) runOnResult(result []*int) error {
 }
 
 // QueueGenSeries implements Querier.QueueGenSeries.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeries(batch Batcher) *QueuedGenSeries {
 	queued := &QueuedGenSeries{}
 
@@ -296,8 +292,6 @@ func (q *QueuedGenSeriesArr1) runOnResult(result []int) error {
 }
 
 // QueueGenSeriesArr1 implements Querier.QueueGenSeriesArr1.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeriesArr1(batch Batcher) *QueuedGenSeriesArr1 {
 	queued := &QueuedGenSeriesArr1{}
 
@@ -362,8 +356,6 @@ func (q *QueuedGenSeriesArr) runOnResult(result [][]int) error {
 }
 
 // QueueGenSeriesArr implements Querier.QueueGenSeriesArr.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeriesArr(batch Batcher) *QueuedGenSeriesArr {
 	queued := &QueuedGenSeriesArr{}
 
@@ -429,8 +421,6 @@ func (q *QueuedGenSeriesStr1) runOnResult(result *string) error {
 }
 
 // QueueGenSeriesStr1 implements Querier.QueueGenSeriesStr1.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeriesStr1(batch Batcher) *QueuedGenSeriesStr1 {
 	queued := &QueuedGenSeriesStr1{}
 
@@ -495,8 +485,6 @@ func (q *QueuedGenSeriesStr) runOnResult(result []*string) error {
 }
 
 // QueueGenSeriesStr implements Querier.QueueGenSeriesStr.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGenSeriesStr(batch Batcher) *QueuedGenSeriesStr {
 	queued := &QueuedGenSeriesStr{}
 

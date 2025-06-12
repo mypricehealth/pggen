@@ -56,7 +56,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -156,8 +156,6 @@ func (q *QueuedCustomTypes) runOnResult(result CustomTypesRow) error {
 }
 
 // QueueCustomTypes implements Querier.QueueCustomTypes.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueCustomTypes(batch Batcher) *QueuedCustomTypes {
 	queued := &QueuedCustomTypes{}
 
@@ -221,8 +219,6 @@ func (q *QueuedCustomMyInt) runOnResult(result int) error {
 }
 
 // QueueCustomMyInt implements Querier.QueueCustomMyInt.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueCustomMyInt(batch Batcher) *QueuedCustomMyInt {
 	queued := &QueuedCustomMyInt{}
 
@@ -286,8 +282,6 @@ func (q *QueuedIntArray) runOnResult(result [][]int32) error {
 }
 
 // QueueIntArray implements Querier.QueueIntArray.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueIntArray(batch Batcher) *QueuedIntArray {
 	queued := &QueuedIntArray{}
 

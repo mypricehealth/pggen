@@ -47,7 +47,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -142,8 +142,6 @@ func (q *QueuedDomainOne) runOnResult(result string) error {
 }
 
 // QueueDomainOne implements Querier.QueueDomainOne.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueDomainOne(batch Batcher) *QueuedDomainOne {
 	queued := &QueuedDomainOne{}
 

@@ -63,7 +63,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -157,8 +157,6 @@ func (q *QueuedVoidOnly) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueVoidOnly implements Querier.QueueVoidOnly.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidOnly(batch Batcher) *QueuedVoidOnly {
 	queued := &QueuedVoidOnly{}
 
@@ -217,8 +215,6 @@ func (q *QueuedVoidOnlyTwoParams) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueVoidOnlyTwoParams implements Querier.QueueVoidOnlyTwoParams.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidOnlyTwoParams(batch Batcher, id int32) *QueuedVoidOnlyTwoParams {
 	queued := &QueuedVoidOnlyTwoParams{}
 
@@ -278,8 +274,6 @@ func (q *QueuedVoidTwo) runOnResult(result string) error {
 }
 
 // QueueVoidTwo implements Querier.QueueVoidTwo.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidTwo(batch Batcher) *QueuedVoidTwo {
 	queued := &QueuedVoidTwo{}
 
@@ -348,8 +342,6 @@ func (q *QueuedVoidThree) runOnResult(result VoidThreeRow) error {
 }
 
 // QueueVoidThree implements Querier.QueueVoidThree.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidThree(batch Batcher) *QueuedVoidThree {
 	queued := &QueuedVoidThree{}
 
@@ -413,8 +405,6 @@ func (q *QueuedVoidThree2) runOnResult(result []string) error {
 }
 
 // QueueVoidThree2 implements Querier.QueueVoidThree2.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidThree2(batch Batcher) *QueuedVoidThree2 {
 	queued := &QueuedVoidThree2{}
 

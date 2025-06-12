@@ -51,7 +51,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -146,8 +146,6 @@ func (q *QueuedCreateUser) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueCreateUser implements Querier.QueueCreateUser.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueCreateUser(batch Batcher, email string, password string) *QueuedCreateUser {
 	queued := &QueuedCreateUser{}
 
@@ -213,8 +211,6 @@ func (q *QueuedFindUser) runOnResult(result FindUserRow) error {
 }
 
 // QueueFindUser implements Querier.QueueFindUser.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindUser(batch Batcher, email string) *QueuedFindUser {
 	queued := &QueuedFindUser{}
 

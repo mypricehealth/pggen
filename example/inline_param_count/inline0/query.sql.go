@@ -67,7 +67,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -162,8 +162,6 @@ func (q *QueuedCountAuthors) runOnResult(result *int) error {
 }
 
 // QueueCountAuthors implements Querier.QueueCountAuthors.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueCountAuthors(batch Batcher) *QueuedCountAuthors {
 	queued := &QueuedCountAuthors{}
 
@@ -238,8 +236,6 @@ func (q *QueuedFindAuthorByID) runOnResult(result FindAuthorByIDRow) error {
 }
 
 // QueueFindAuthorByID implements Querier.QueueFindAuthorByID.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindAuthorByID(batch Batcher, params FindAuthorByIDParams) *QueuedFindAuthorByID {
 	queued := &QueuedFindAuthorByID{}
 
@@ -310,8 +306,6 @@ func (q *QueuedInsertAuthor) runOnResult(result int32) error {
 }
 
 // QueueInsertAuthor implements Querier.QueueInsertAuthor.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertAuthor(batch Batcher, params InsertAuthorParams) *QueuedInsertAuthor {
 	queued := &QueuedInsertAuthor{}
 
@@ -384,8 +378,6 @@ func (q *QueuedDeleteAuthorsByFullName) runOnResult(result pgconn.CommandTag) er
 }
 
 // QueueDeleteAuthorsByFullName implements Querier.QueueDeleteAuthorsByFullName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch Batcher, params DeleteAuthorsByFullNameParams) *QueuedDeleteAuthorsByFullName {
 	queued := &QueuedDeleteAuthorsByFullName{}
 
