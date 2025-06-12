@@ -139,6 +139,10 @@ func (q *Queued{{ $q.Name }}) runWrapError(err error) error {
 }
 
 func (q *Queued{{ $q.Name }}) runOnResult(result {{ $q.EmitResultType }}) error {
+    {{- if eq $q.ResultKind ":rows" }}
+    defer result.Close()
+    {{- end }}
+
 	if q.onResult == nil {
 		return nil
 	}
