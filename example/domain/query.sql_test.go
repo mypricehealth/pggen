@@ -13,8 +13,9 @@ func TestQuerier_DomainOne(t *testing.T) {
 	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
 	defer cleanup()
 
-	q := NewQuerier(conn)
 	ctx := context.Background()
+	q, err := NewQuerier(ctx, conn)
+	require.NoError(t, err)
 
 	t.Run("DomainOne", func(t *testing.T) {
 		postCode, err := q.DomainOne(ctx)

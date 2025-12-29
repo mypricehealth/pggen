@@ -26,6 +26,16 @@ type Querier interface {
 	ParamNested2Array(ctx context.Context, images []ProductImageType) ([]ProductImageType, error)
 
 	ParamNested3(ctx context.Context, imageSet ProductImageSetType) (ProductImageSetType, error)
+
+	QueueParamArrayInt(batch Batcher, ints []int) *QueuedParamArrayInt
+
+	QueueParamNested1(batch Batcher, dimensions Dimensions) *QueuedParamNested1
+
+	QueueParamNested2(batch Batcher, image ProductImageType) *QueuedParamNested2
+
+	QueueParamNested2Array(batch Batcher, images []ProductImageType) *QueuedParamNested2Array
+
+	QueueParamNested3(batch Batcher, imageSet ProductImageSetType) *QueuedParamNested3
 }
 
 var _ Querier = &DBQuerier{}
@@ -44,14 +54,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 // Dimensions represents the Postgres composite type "dimensions".
@@ -114,11 +135,6 @@ const paramArrayIntSQL = `SELECT $1::bigint[];`
 // ParamArrayInt implements Querier.ParamArrayInt.
 func (q *DBQuerier) ParamArrayInt(ctx context.Context, ints []int) ([]int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ParamArrayInt")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, paramArrayIntSQL, ints)
 	if err != nil {
 		return nil, fmt.Errorf("query ParamArrayInt: %w", q.errWrap(err))
@@ -127,16 +143,63 @@ func (q *DBQuerier) ParamArrayInt(ctx context.Context, ints []int) ([]int, error
 	return res, q.errWrap(err)
 }
 
+type QueuedParamArrayInt struct {
+	wrapError func(err error) error
+	onResult  func([]int) error
+}
+
+func (q *QueuedParamArrayInt) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedParamArrayInt) OnResult(onResult func([]int) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedParamArrayInt) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedParamArrayInt) runOnResult(result []int) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueParamArrayInt implements Querier.QueueParamArrayInt.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueParamArrayInt(batch Batcher, ints []int) *QueuedParamArrayInt {
+	queued := &QueuedParamArrayInt{}
+
+	queuedQuery := batch.Queue(paramArrayIntSQL, ints)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]int])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const paramNested1SQL = `SELECT $1::dimensions;`
 
 // ParamNested1 implements Querier.ParamNested1.
 func (q *DBQuerier) ParamNested1(ctx context.Context, dimensions Dimensions) (Dimensions, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ParamNested1")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return Dimensions{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, paramNested1SQL, dimensions)
 	if err != nil {
 		return Dimensions{}, fmt.Errorf("query ParamNested1: %w", q.errWrap(err))
@@ -145,16 +208,63 @@ func (q *DBQuerier) ParamNested1(ctx context.Context, dimensions Dimensions) (Di
 	return res, q.errWrap(err)
 }
 
+type QueuedParamNested1 struct {
+	wrapError func(err error) error
+	onResult  func(Dimensions) error
+}
+
+func (q *QueuedParamNested1) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedParamNested1) OnResult(onResult func(Dimensions) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedParamNested1) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedParamNested1) runOnResult(result Dimensions) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueParamNested1 implements Querier.QueueParamNested1.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueParamNested1(batch Batcher, dimensions Dimensions) *QueuedParamNested1 {
+	queued := &QueuedParamNested1{}
+
+	queuedQuery := batch.Queue(paramNested1SQL, dimensions)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[Dimensions])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const paramNested2SQL = `SELECT $1::product_image_type;`
 
 // ParamNested2 implements Querier.ParamNested2.
 func (q *DBQuerier) ParamNested2(ctx context.Context, image ProductImageType) (ProductImageType, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ParamNested2")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return ProductImageType{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, paramNested2SQL, image)
 	if err != nil {
 		return ProductImageType{}, fmt.Errorf("query ParamNested2: %w", q.errWrap(err))
@@ -163,16 +273,63 @@ func (q *DBQuerier) ParamNested2(ctx context.Context, image ProductImageType) (P
 	return res, q.errWrap(err)
 }
 
+type QueuedParamNested2 struct {
+	wrapError func(err error) error
+	onResult  func(ProductImageType) error
+}
+
+func (q *QueuedParamNested2) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedParamNested2) OnResult(onResult func(ProductImageType) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedParamNested2) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedParamNested2) runOnResult(result ProductImageType) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueParamNested2 implements Querier.QueueParamNested2.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueParamNested2(batch Batcher, image ProductImageType) *QueuedParamNested2 {
+	queued := &QueuedParamNested2{}
+
+	queuedQuery := batch.Queue(paramNested2SQL, image)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[ProductImageType])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const paramNested2ArraySQL = `SELECT $1::product_image_type[];`
 
 // ParamNested2Array implements Querier.ParamNested2Array.
 func (q *DBQuerier) ParamNested2Array(ctx context.Context, images []ProductImageType) ([]ProductImageType, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ParamNested2Array")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, paramNested2ArraySQL, images)
 	if err != nil {
 		return nil, fmt.Errorf("query ParamNested2Array: %w", q.errWrap(err))
@@ -181,20 +338,119 @@ func (q *DBQuerier) ParamNested2Array(ctx context.Context, images []ProductImage
 	return res, q.errWrap(err)
 }
 
+type QueuedParamNested2Array struct {
+	wrapError func(err error) error
+	onResult  func([]ProductImageType) error
+}
+
+func (q *QueuedParamNested2Array) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedParamNested2Array) OnResult(onResult func([]ProductImageType) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedParamNested2Array) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedParamNested2Array) runOnResult(result []ProductImageType) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueParamNested2Array implements Querier.QueueParamNested2Array.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueParamNested2Array(batch Batcher, images []ProductImageType) *QueuedParamNested2Array {
+	queued := &QueuedParamNested2Array{}
+
+	queuedQuery := batch.Queue(paramNested2ArraySQL, images)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]ProductImageType])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const paramNested3SQL = `SELECT $1::product_image_set_type;`
 
 // ParamNested3 implements Querier.ParamNested3.
 func (q *DBQuerier) ParamNested3(ctx context.Context, imageSet ProductImageSetType) (ProductImageSetType, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "ParamNested3")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return ProductImageSetType{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, paramNested3SQL, imageSet)
 	if err != nil {
 		return ProductImageSetType{}, fmt.Errorf("query ParamNested3: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[ProductImageSetType])
 	return res, q.errWrap(err)
+}
+
+type QueuedParamNested3 struct {
+	wrapError func(err error) error
+	onResult  func(ProductImageSetType) error
+}
+
+func (q *QueuedParamNested3) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedParamNested3) OnResult(onResult func(ProductImageSetType) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedParamNested3) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedParamNested3) runOnResult(result ProductImageSetType) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueParamNested3 implements Querier.QueueParamNested3.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueParamNested3(batch Batcher, imageSet ProductImageSetType) *QueuedParamNested3 {
+	queued := &QueuedParamNested3{}
+
+	queuedQuery := batch.Queue(paramNested3SQL, imageSet)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[ProductImageSetType])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

@@ -26,6 +26,16 @@ type Querier interface {
 	VoidThree(ctx context.Context) (VoidThreeRow, error)
 
 	VoidThree2(ctx context.Context) ([]string, error)
+
+	QueueVoidOnly(batch Batcher) *QueuedVoidOnly
+
+	QueueVoidOnlyTwoParams(batch Batcher, id int32) *QueuedVoidOnlyTwoParams
+
+	QueueVoidTwo(batch Batcher) *QueuedVoidTwo
+
+	QueueVoidThree(batch Batcher) *QueuedVoidThree
+
+	QueueVoidThree2(batch Batcher) *QueuedVoidThree2
 }
 
 var _ Querier = &DBQuerier{}
@@ -44,14 +54,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -87,11 +108,6 @@ const voidOnlySQL = `SELECT void_fn();`
 // VoidOnly implements Querier.VoidOnly.
 func (q *DBQuerier) VoidOnly(ctx context.Context) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidOnly")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, voidOnlySQL)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnly: %w", q.errWrap(err))
@@ -99,16 +115,59 @@ func (q *DBQuerier) VoidOnly(ctx context.Context) (pgconn.CommandTag, error) {
 	return cmdTag, q.errWrap(err)
 }
 
+type QueuedVoidOnly struct {
+	wrapError func(err error) error
+	onResult  func(pgconn.CommandTag) error
+}
+
+func (q *QueuedVoidOnly) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedVoidOnly) OnResult(onResult func(pgconn.CommandTag) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedVoidOnly) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedVoidOnly) runOnResult(result pgconn.CommandTag) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueVoidOnly implements Querier.QueueVoidOnly.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueVoidOnly(batch Batcher) *QueuedVoidOnly {
+	queued := &QueuedVoidOnly{}
+
+	queuedQuery := batch.Queue(voidOnlySQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(tag)
+	}
+
+	return queued
+}
+
 const voidOnlyTwoParamsSQL = `SELECT void_fn_two_params($1, 'text');`
 
 // VoidOnlyTwoParams implements Querier.VoidOnlyTwoParams.
 func (q *DBQuerier) VoidOnlyTwoParams(ctx context.Context, id int32) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidOnlyTwoParams")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, voidOnlyTwoParamsSQL, id)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query VoidOnlyTwoParams: %w", q.errWrap(err))
@@ -116,22 +175,117 @@ func (q *DBQuerier) VoidOnlyTwoParams(ctx context.Context, id int32) (pgconn.Com
 	return cmdTag, q.errWrap(err)
 }
 
+type QueuedVoidOnlyTwoParams struct {
+	wrapError func(err error) error
+	onResult  func(pgconn.CommandTag) error
+}
+
+func (q *QueuedVoidOnlyTwoParams) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedVoidOnlyTwoParams) OnResult(onResult func(pgconn.CommandTag) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedVoidOnlyTwoParams) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedVoidOnlyTwoParams) runOnResult(result pgconn.CommandTag) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueVoidOnlyTwoParams implements Querier.QueueVoidOnlyTwoParams.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueVoidOnlyTwoParams(batch Batcher, id int32) *QueuedVoidOnlyTwoParams {
+	queued := &QueuedVoidOnlyTwoParams{}
+
+	queuedQuery := batch.Queue(voidOnlyTwoParamsSQL, id)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(tag)
+	}
+
+	return queued
+}
+
 const voidTwoSQL = `SELECT void_fn(), 'foo' as name;`
 
 // VoidTwo implements Querier.VoidTwo.
 func (q *DBQuerier) VoidTwo(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidTwo")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, voidTwoSQL)
 	if err != nil {
 		return "", fmt.Errorf("query VoidTwo: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
+}
+
+type QueuedVoidTwo struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedVoidTwo) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedVoidTwo) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedVoidTwo) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedVoidTwo) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueVoidTwo implements Querier.QueueVoidTwo.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueVoidTwo(batch Batcher) *QueuedVoidTwo {
+	queued := &QueuedVoidTwo{}
+
+	queuedQuery := batch.Queue(voidTwoSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const voidThreeSQL = `SELECT void_fn(), 'foo' as foo, 'bar' as bar;`
@@ -144,11 +298,6 @@ type VoidThreeRow struct {
 // VoidThree implements Querier.VoidThree.
 func (q *DBQuerier) VoidThree(ctx context.Context) (VoidThreeRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidThree")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return VoidThreeRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, voidThreeSQL)
 	if err != nil {
 		return VoidThreeRow{}, fmt.Errorf("query VoidThree: %w", q.errWrap(err))
@@ -157,20 +306,119 @@ func (q *DBQuerier) VoidThree(ctx context.Context) (VoidThreeRow, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedVoidThree struct {
+	wrapError func(err error) error
+	onResult  func(VoidThreeRow) error
+}
+
+func (q *QueuedVoidThree) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedVoidThree) OnResult(onResult func(VoidThreeRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedVoidThree) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedVoidThree) runOnResult(result VoidThreeRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueVoidThree implements Querier.QueueVoidThree.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueVoidThree(batch Batcher) *QueuedVoidThree {
+	queued := &QueuedVoidThree{}
+
+	queuedQuery := batch.Queue(voidThreeSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[VoidThreeRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const voidThree2SQL = `SELECT 'foo' as foo, void_fn(), void_fn();`
 
 // VoidThree2 implements Querier.VoidThree2.
 func (q *DBQuerier) VoidThree2(ctx context.Context) ([]string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "VoidThree2")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, voidThree2SQL)
 	if err != nil {
 		return nil, fmt.Errorf("query VoidThree2: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
+}
+
+type QueuedVoidThree2 struct {
+	wrapError func(err error) error
+	onResult  func([]string) error
+}
+
+func (q *QueuedVoidThree2) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedVoidThree2) OnResult(onResult func([]string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedVoidThree2) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedVoidThree2) runOnResult(result []string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueVoidThree2 implements Querier.QueueVoidThree2.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueVoidThree2(batch Batcher) *QueuedVoidThree2 {
+	queued := &QueuedVoidThree2{}
+
+	queuedQuery := batch.Queue(voidThree2SQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

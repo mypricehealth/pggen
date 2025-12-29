@@ -14,15 +14,62 @@ const alphaSQL = `SELECT 'alpha' as output;`
 // Alpha implements Querier.Alpha.
 func (q *DBQuerier) Alpha(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Alpha")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, alphaSQL)
 	if err != nil {
 		return "", fmt.Errorf("query Alpha: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
+}
+
+type QueuedAlpha struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedAlpha) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedAlpha) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedAlpha) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedAlpha) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueAlpha implements Querier.QueueAlpha.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueAlpha(batch Batcher) *QueuedAlpha {
+	queued := &QueuedAlpha{}
+
+	queuedQuery := batch.Queue(alphaSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

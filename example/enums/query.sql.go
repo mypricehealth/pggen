@@ -33,6 +33,22 @@ type Querier interface {
 
 	// Regression test for https://github.com/jschaf/pggen/issues/23.
 	EnumInsideComposite(ctx context.Context) (Device, error)
+
+	QueueFindAllDevices(batch Batcher) *QueuedFindAllDevices
+
+	QueueInsertDevice(batch Batcher, mac net.HardwareAddr, typePg DeviceType) *QueuedInsertDevice
+
+	// Select an array of all device_type enum values.
+	QueueFindOneDeviceArray(batch Batcher) *QueuedFindOneDeviceArray
+
+	// Select many rows of device_type enum values.
+	QueueFindManyDeviceArray(batch Batcher) *QueuedFindManyDeviceArray
+
+	// Select many rows of device_type enum values with multiple output columns.
+	QueueFindManyDeviceArrayWithNum(batch Batcher) *QueuedFindManyDeviceArrayWithNum
+
+	// Regression test for https://github.com/jschaf/pggen/issues/23.
+	QueueEnumInsideComposite(batch Batcher) *QueuedEnumInsideComposite
 }
 
 var _ Querier = &DBQuerier{}
@@ -51,14 +67,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 // Device represents the Postgres composite type "device".
@@ -124,11 +151,6 @@ type FindAllDevicesRow struct {
 // FindAllDevices implements Querier.FindAllDevices.
 func (q *DBQuerier) FindAllDevices(ctx context.Context) ([]FindAllDevicesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindAllDevices")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findAllDevicesSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindAllDevices: %w", q.errWrap(err))
@@ -137,17 +159,64 @@ func (q *DBQuerier) FindAllDevices(ctx context.Context) ([]FindAllDevicesRow, er
 	return res, q.errWrap(err)
 }
 
+type QueuedFindAllDevices struct {
+	wrapError func(err error) error
+	onResult  func([]FindAllDevicesRow) error
+}
+
+func (q *QueuedFindAllDevices) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindAllDevices) OnResult(onResult func([]FindAllDevicesRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindAllDevices) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindAllDevices) runOnResult(result []FindAllDevicesRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindAllDevices implements Querier.QueueFindAllDevices.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindAllDevices(batch Batcher) *QueuedFindAllDevices {
+	queued := &QueuedFindAllDevices{}
+
+	queuedQuery := batch.Queue(findAllDevicesSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindAllDevicesRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const insertDeviceSQL = `INSERT INTO device (mac, type)
 VALUES ($1, $2);`
 
 // InsertDevice implements Querier.InsertDevice.
 func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, typePg DeviceType) (pgconn.CommandTag, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "InsertDevice")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return pgconn.CommandTag{}, q.errWrap(err)
-	}
 	cmdTag, err := q.conn.Exec(ctx, insertDeviceSQL, mac, typePg)
 	if err != nil {
 		return pgconn.CommandTag{}, fmt.Errorf("exec query InsertDevice: %w", q.errWrap(err))
@@ -155,22 +224,117 @@ func (q *DBQuerier) InsertDevice(ctx context.Context, mac net.HardwareAddr, type
 	return cmdTag, q.errWrap(err)
 }
 
+type QueuedInsertDevice struct {
+	wrapError func(err error) error
+	onResult  func(pgconn.CommandTag) error
+}
+
+func (q *QueuedInsertDevice) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedInsertDevice) OnResult(onResult func(pgconn.CommandTag) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedInsertDevice) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedInsertDevice) runOnResult(result pgconn.CommandTag) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueInsertDevice implements Querier.QueueInsertDevice.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueInsertDevice(batch Batcher, mac net.HardwareAddr, typePg DeviceType) *QueuedInsertDevice {
+	queued := &QueuedInsertDevice{}
+
+	queuedQuery := batch.Queue(insertDeviceSQL, mac, typePg)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		tag, err := br.Exec()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(tag)
+	}
+
+	return queued
+}
+
 const findOneDeviceArraySQL = `SELECT enum_range(NULL::device_type) AS device_types;`
 
 // FindOneDeviceArray implements Querier.FindOneDeviceArray.
 func (q *DBQuerier) FindOneDeviceArray(ctx context.Context) ([]DeviceType, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindOneDeviceArray")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findOneDeviceArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindOneDeviceArray: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]DeviceType])
 	return res, q.errWrap(err)
+}
+
+type QueuedFindOneDeviceArray struct {
+	wrapError func(err error) error
+	onResult  func([]DeviceType) error
+}
+
+func (q *QueuedFindOneDeviceArray) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindOneDeviceArray) OnResult(onResult func([]DeviceType) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindOneDeviceArray) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindOneDeviceArray) runOnResult(result []DeviceType) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindOneDeviceArray implements Querier.QueueFindOneDeviceArray.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindOneDeviceArray(batch Batcher) *QueuedFindOneDeviceArray {
+	queued := &QueuedFindOneDeviceArray{}
+
+	queuedQuery := batch.Queue(findOneDeviceArraySQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]DeviceType])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const findManyDeviceArraySQL = `SELECT enum_range('ipad'::device_type, 'iot'::device_type) AS device_types
@@ -180,17 +344,64 @@ SELECT enum_range(NULL::device_type) AS device_types;`
 // FindManyDeviceArray implements Querier.FindManyDeviceArray.
 func (q *DBQuerier) FindManyDeviceArray(ctx context.Context) ([][]DeviceType, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArray")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findManyDeviceArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArray: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[[]DeviceType])
 	return res, q.errWrap(err)
+}
+
+type QueuedFindManyDeviceArray struct {
+	wrapError func(err error) error
+	onResult  func([][]DeviceType) error
+}
+
+func (q *QueuedFindManyDeviceArray) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindManyDeviceArray) OnResult(onResult func([][]DeviceType) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindManyDeviceArray) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindManyDeviceArray) runOnResult(result [][]DeviceType) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindManyDeviceArray implements Querier.QueueFindManyDeviceArray.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindManyDeviceArray(batch Batcher) *QueuedFindManyDeviceArray {
+	queued := &QueuedFindManyDeviceArray{}
+
+	queuedQuery := batch.Queue(findManyDeviceArraySQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[[]DeviceType])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const findManyDeviceArrayWithNumSQL = `SELECT 1 AS num, enum_range('ipad'::device_type, 'iot'::device_type) AS device_types
@@ -205,11 +416,6 @@ type FindManyDeviceArrayWithNumRow struct {
 // FindManyDeviceArrayWithNum implements Querier.FindManyDeviceArrayWithNum.
 func (q *DBQuerier) FindManyDeviceArrayWithNum(ctx context.Context) ([]FindManyDeviceArrayWithNumRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindManyDeviceArrayWithNum")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, findManyDeviceArrayWithNumSQL)
 	if err != nil {
 		return nil, fmt.Errorf("query FindManyDeviceArrayWithNum: %w", q.errWrap(err))
@@ -218,20 +424,119 @@ func (q *DBQuerier) FindManyDeviceArrayWithNum(ctx context.Context) ([]FindManyD
 	return res, q.errWrap(err)
 }
 
+type QueuedFindManyDeviceArrayWithNum struct {
+	wrapError func(err error) error
+	onResult  func([]FindManyDeviceArrayWithNumRow) error
+}
+
+func (q *QueuedFindManyDeviceArrayWithNum) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindManyDeviceArrayWithNum) OnResult(onResult func([]FindManyDeviceArrayWithNumRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindManyDeviceArrayWithNum) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindManyDeviceArrayWithNum) runOnResult(result []FindManyDeviceArrayWithNumRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindManyDeviceArrayWithNum implements Querier.QueueFindManyDeviceArrayWithNum.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueFindManyDeviceArrayWithNum(batch Batcher) *QueuedFindManyDeviceArrayWithNum {
+	queued := &QueuedFindManyDeviceArrayWithNum{}
+
+	queuedQuery := batch.Queue(findManyDeviceArrayWithNumSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindManyDeviceArrayWithNumRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const enumInsideCompositeSQL = `SELECT ROW('08:00:2b:01:02:03'::macaddr, 'phone'::device_type) ::device;`
 
 // EnumInsideComposite implements Querier.EnumInsideComposite.
 func (q *DBQuerier) EnumInsideComposite(ctx context.Context) (Device, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "EnumInsideComposite")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return Device{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, enumInsideCompositeSQL)
 	if err != nil {
 		return Device{}, fmt.Errorf("query EnumInsideComposite: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[Device])
 	return res, q.errWrap(err)
+}
+
+type QueuedEnumInsideComposite struct {
+	wrapError func(err error) error
+	onResult  func(Device) error
+}
+
+func (q *QueuedEnumInsideComposite) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedEnumInsideComposite) OnResult(onResult func(Device) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedEnumInsideComposite) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedEnumInsideComposite) runOnResult(result Device) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueEnumInsideComposite implements Querier.QueueEnumInsideComposite.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueEnumInsideComposite(batch Batcher) *QueuedEnumInsideComposite {
+	queued := &QueuedEnumInsideComposite{}
+
+	queuedQuery := batch.Queue(enumInsideCompositeSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[Device])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

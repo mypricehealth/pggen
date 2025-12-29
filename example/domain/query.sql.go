@@ -18,6 +18,8 @@ type QueryName struct{}
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
 	DomainOne(ctx context.Context) (string, error)
+
+	QueueDomainOne(batch Batcher) *QueuedDomainOne
 }
 
 var _ Querier = &DBQuerier{}
@@ -36,14 +38,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -79,15 +92,62 @@ const domainOneSQL = `SELECT '90210'::us_postal_code;`
 // DomainOne implements Querier.DomainOne.
 func (q *DBQuerier) DomainOne(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "DomainOne")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, domainOneSQL)
 	if err != nil {
 		return "", fmt.Errorf("query DomainOne: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
+}
+
+type QueuedDomainOne struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedDomainOne) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedDomainOne) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedDomainOne) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedDomainOne) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueDomainOne implements Querier.QueueDomainOne.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueDomainOne(batch Batcher) *QueuedDomainOne {
+	queued := &QueuedDomainOne{}
+
+	queuedQuery := batch.Queue(domainOneSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

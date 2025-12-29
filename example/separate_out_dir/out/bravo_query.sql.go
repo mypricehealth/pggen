@@ -14,15 +14,62 @@ const bravoSQL = `SELECT 'bravo' as output;`
 // Bravo implements Querier.Bravo.
 func (q *DBQuerier) Bravo(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Bravo")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, bravoSQL)
 	if err != nil {
 		return "", fmt.Errorf("query Bravo: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
+}
+
+type QueuedBravo struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedBravo) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedBravo) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedBravo) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedBravo) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueBravo implements Querier.QueueBravo.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueBravo(batch Batcher) *QueuedBravo {
+	queued := &QueuedBravo{}
+
+	queuedQuery := batch.Queue(bravoSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

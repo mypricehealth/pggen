@@ -25,6 +25,14 @@ type Querier interface {
 	GetManyTimestamptzs(ctx context.Context, data []time.Time) ([]*time.Time, error)
 
 	GetManyTimestamps(ctx context.Context, data []*time.Time) ([]*time.Time, error)
+
+	QueueGetBools(batch Batcher, data []bool) *QueuedGetBools
+
+	QueueGetOneTimestamp(batch Batcher, data *time.Time) *QueuedGetOneTimestamp
+
+	QueueGetManyTimestamptzs(batch Batcher, data []time.Time) *QueuedGetManyTimestamptzs
+
+	QueueGetManyTimestamps(batch Batcher, data []*time.Time) *QueuedGetManyTimestamps
 }
 
 var _ Querier = &DBQuerier{}
@@ -43,14 +51,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -86,11 +105,6 @@ const getBoolsSQL = `SELECT $1::boolean[];`
 // GetBools implements Querier.GetBools.
 func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetBools")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, getBoolsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetBools: %w", q.errWrap(err))
@@ -99,16 +113,63 @@ func (q *DBQuerier) GetBools(ctx context.Context, data []bool) ([]bool, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedGetBools struct {
+	wrapError func(err error) error
+	onResult  func([]bool) error
+}
+
+func (q *QueuedGetBools) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedGetBools) OnResult(onResult func([]bool) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedGetBools) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedGetBools) runOnResult(result []bool) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueGetBools implements Querier.QueueGetBools.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueGetBools(batch Batcher, data []bool) *QueuedGetBools {
+	queued := &QueuedGetBools{}
+
+	queuedQuery := batch.Queue(getBoolsSQL, data)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[[]bool])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const getOneTimestampSQL = `SELECT $1::timestamp;`
 
 // GetOneTimestamp implements Querier.GetOneTimestamp.
 func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time.Time, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetOneTimestamp")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, getOneTimestampSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetOneTimestamp: %w", q.errWrap(err))
@@ -117,17 +178,64 @@ func (q *DBQuerier) GetOneTimestamp(ctx context.Context, data *time.Time) (*time
 	return res, q.errWrap(err)
 }
 
+type QueuedGetOneTimestamp struct {
+	wrapError func(err error) error
+	onResult  func(*time.Time) error
+}
+
+func (q *QueuedGetOneTimestamp) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedGetOneTimestamp) OnResult(onResult func(*time.Time) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedGetOneTimestamp) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedGetOneTimestamp) runOnResult(result *time.Time) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueGetOneTimestamp implements Querier.QueueGetOneTimestamp.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueGetOneTimestamp(batch Batcher, data *time.Time) *QueuedGetOneTimestamp {
+	queued := &QueuedGetOneTimestamp{}
+
+	queuedQuery := batch.Queue(getOneTimestampSQL, data)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*time.Time])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const getManyTimestamptzsSQL = `SELECT *
 FROM unnest($1::timestamptz[]);`
 
 // GetManyTimestamptzs implements Querier.GetManyTimestamptzs.
 func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) ([]*time.Time, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamptzs")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, getManyTimestamptzsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetManyTimestamptzs: %w", q.errWrap(err))
@@ -136,21 +244,120 @@ func (q *DBQuerier) GetManyTimestamptzs(ctx context.Context, data []time.Time) (
 	return res, q.errWrap(err)
 }
 
+type QueuedGetManyTimestamptzs struct {
+	wrapError func(err error) error
+	onResult  func([]*time.Time) error
+}
+
+func (q *QueuedGetManyTimestamptzs) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedGetManyTimestamptzs) OnResult(onResult func([]*time.Time) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedGetManyTimestamptzs) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedGetManyTimestamptzs) runOnResult(result []*time.Time) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueGetManyTimestamptzs implements Querier.QueueGetManyTimestamptzs.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueGetManyTimestamptzs(batch Batcher, data []time.Time) *QueuedGetManyTimestamptzs {
+	queued := &QueuedGetManyTimestamptzs{}
+
+	queuedQuery := batch.Queue(getManyTimestamptzsSQL, data)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const getManyTimestampsSQL = `SELECT *
 FROM unnest($1::timestamp[]);`
 
 // GetManyTimestamps implements Querier.GetManyTimestamps.
 func (q *DBQuerier) GetManyTimestamps(ctx context.Context, data []*time.Time) ([]*time.Time, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GetManyTimestamps")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, getManyTimestampsSQL, data)
 	if err != nil {
 		return nil, fmt.Errorf("query GetManyTimestamps: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
 	return res, q.errWrap(err)
+}
+
+type QueuedGetManyTimestamps struct {
+	wrapError func(err error) error
+	onResult  func([]*time.Time) error
+}
+
+func (q *QueuedGetManyTimestamps) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedGetManyTimestamps) OnResult(onResult func([]*time.Time) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedGetManyTimestamps) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedGetManyTimestamps) runOnResult(result []*time.Time) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueGetManyTimestamps implements Querier.QueueGetManyTimestamps.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueGetManyTimestamps(batch Batcher, data []*time.Time) *QueuedGetManyTimestamps {
+	queued := &QueuedGetManyTimestamps{}
+
+	queuedQuery := batch.Queue(getManyTimestampsSQL, data)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[*time.Time])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

@@ -9,11 +9,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewQuerier_ParamArrayInt(t *testing.T) {
-	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
-	defer cleanup()
+func newQuerier(t *testing.T, sqlFiles []string) *DBQuerier {
+	conn, cleanup := pgtest.NewPostgresSchema(t, sqlFiles)
+	t.Cleanup(cleanup)
 
-	q := NewQuerier(conn)
+	ctx := context.Background()
+	q, err := NewQuerier(ctx, conn)
+	require.NoError(t, err)
+
+	return q
+}
+
+func TestNewQuerier_ParamArrayInt(t *testing.T) {
+	q := newQuerier(t, []string{"schema.sql"})
 	ctx := context.Background()
 
 	want := []int{1, 2, 3, 4}
@@ -26,10 +34,7 @@ func TestNewQuerier_ParamArrayInt(t *testing.T) {
 }
 
 func TestNewQuerier_ParamNested1(t *testing.T) {
-	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
-	defer cleanup()
-
-	q := NewQuerier(conn)
+	q := newQuerier(t, []string{"schema.sql"})
 	ctx := context.Background()
 
 	want := Dimensions{Width: 77, Height: 77}
@@ -42,10 +47,7 @@ func TestNewQuerier_ParamNested1(t *testing.T) {
 }
 
 func TestNewQuerier_ParamNested2(t *testing.T) {
-	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
-	defer cleanup()
-
-	q := NewQuerier(conn)
+	q := newQuerier(t, []string{"schema.sql"})
 	ctx := context.Background()
 
 	want := ProductImageType{
@@ -61,10 +63,7 @@ func TestNewQuerier_ParamNested2(t *testing.T) {
 }
 
 func TestNewQuerier_ParamNested2Array(t *testing.T) {
-	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
-	defer cleanup()
-
-	q := NewQuerier(conn)
+	q := newQuerier(t, []string{"schema.sql"})
 	ctx := context.Background()
 
 	want := []ProductImageType{
@@ -80,10 +79,7 @@ func TestNewQuerier_ParamNested2Array(t *testing.T) {
 }
 
 func TestNewQuerier_ParamNested3(t *testing.T) {
-	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
-	defer cleanup()
-
-	q := NewQuerier(conn)
+	q := newQuerier(t, []string{"schema.sql"})
 	ctx := context.Background()
 
 	want := ProductImageSetType{
@@ -103,12 +99,10 @@ func TestNewQuerier_ParamNested3(t *testing.T) {
 }
 
 func TestNewQuerier_ParamNested3_QueryAllDataTypes(t *testing.T) {
-	conn, cleanup := pgtest.NewPostgresSchema(t, []string{"schema.sql"})
-	defer cleanup()
+	q := newQuerier(t, []string{"schema.sql"})
 	ctx := context.Background()
 	// dataTypes, err := QueryAllDataTypes(ctx, conn)
 	// require.NoError(t, err)
-	q := NewQuerier(conn)
 
 	want := ProductImageSetType{
 		Name:      "set1",

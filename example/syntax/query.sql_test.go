@@ -6,13 +6,16 @@ import (
 
 	"github.com/mypricehealth/pggen/internal/pgtest"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestQuerier(t *testing.T) {
 	conn, cleanup := pgtest.NewPostgresSchema(t, nil)
 	defer cleanup()
-	q := NewQuerier(conn)
+
 	ctx := context.Background()
+	q, err := NewQuerier(ctx, conn)
+	require.NoError(t, err)
 
 	val, err := q.Backtick(ctx)
 	assert.NoError(t, err, "Backtick")

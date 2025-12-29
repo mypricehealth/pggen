@@ -42,6 +42,32 @@ type Querier interface {
 	BadEnumName(ctx context.Context) (UnnamedEnum123, error)
 
 	GoKeyword(ctx context.Context, go_ string) (string, error)
+
+	// Query to test escaping in generated Go.
+	QueueBacktick(batch Batcher) *QueuedBacktick
+
+	// Query to test escaping in generated Go.
+	QueueBacktickQuoteBacktick(batch Batcher) *QueuedBacktickQuoteBacktick
+
+	// Query to test escaping in generated Go.
+	QueueBacktickNewline(batch Batcher) *QueuedBacktickNewline
+
+	// Query to test escaping in generated Go.
+	QueueBacktickDoubleQuote(batch Batcher) *QueuedBacktickDoubleQuote
+
+	// Query to test escaping in generated Go.
+	QueueBacktickBackslashN(batch Batcher) *QueuedBacktickBackslashN
+
+	// Illegal names.
+	QueueIllegalNameSymbols(batch Batcher, helloWorld string) *QueuedIllegalNameSymbols
+
+	// Space after pggen.arg
+	QueueSpaceAfter(batch Batcher, space string) *QueuedSpaceAfter
+
+	// Enum named 123.
+	QueueBadEnumName(batch Batcher) *QueuedBadEnumName
+
+	QueueGoKeyword(batch Batcher, go_ string) *QueuedGoKeyword
 }
 
 var _ Querier = &DBQuerier{}
@@ -60,14 +86,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 // UnnamedEnum123 represents the Postgres enum "123".
@@ -115,11 +152,6 @@ const backtickSQL = "SELECT '`';"
 // Backtick implements Querier.Backtick.
 func (q *DBQuerier) Backtick(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "Backtick")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, backtickSQL)
 	if err != nil {
 		return "", fmt.Errorf("query Backtick: %w", q.errWrap(err))
@@ -128,16 +160,63 @@ func (q *DBQuerier) Backtick(ctx context.Context) (string, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedBacktick struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedBacktick) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedBacktick) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedBacktick) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedBacktick) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueBacktick implements Querier.QueueBacktick.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueBacktick(batch Batcher) *QueuedBacktick {
+	queued := &QueuedBacktick{}
+
+	queuedQuery := batch.Queue(backtickSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const backtickQuoteBacktickSQL = "SELECT '`\"`';"
 
 // BacktickQuoteBacktick implements Querier.BacktickQuoteBacktick.
 func (q *DBQuerier) BacktickQuoteBacktick(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickQuoteBacktick")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, backtickQuoteBacktickSQL)
 	if err != nil {
 		return "", fmt.Errorf("query BacktickQuoteBacktick: %w", q.errWrap(err))
@@ -146,16 +225,63 @@ func (q *DBQuerier) BacktickQuoteBacktick(ctx context.Context) (string, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedBacktickQuoteBacktick struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedBacktickQuoteBacktick) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedBacktickQuoteBacktick) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedBacktickQuoteBacktick) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedBacktickQuoteBacktick) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueBacktickQuoteBacktick implements Querier.QueueBacktickQuoteBacktick.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueBacktickQuoteBacktick(batch Batcher) *QueuedBacktickQuoteBacktick {
+	queued := &QueuedBacktickQuoteBacktick{}
+
+	queuedQuery := batch.Queue(backtickQuoteBacktickSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const backtickNewlineSQL = "SELECT '`\n';"
 
 // BacktickNewline implements Querier.BacktickNewline.
 func (q *DBQuerier) BacktickNewline(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickNewline")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, backtickNewlineSQL)
 	if err != nil {
 		return "", fmt.Errorf("query BacktickNewline: %w", q.errWrap(err))
@@ -164,16 +290,63 @@ func (q *DBQuerier) BacktickNewline(ctx context.Context) (string, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedBacktickNewline struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedBacktickNewline) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedBacktickNewline) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedBacktickNewline) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedBacktickNewline) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueBacktickNewline implements Querier.QueueBacktickNewline.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueBacktickNewline(batch Batcher) *QueuedBacktickNewline {
+	queued := &QueuedBacktickNewline{}
+
+	queuedQuery := batch.Queue(backtickNewlineSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const backtickDoubleQuoteSQL = "SELECT '`\"';"
 
 // BacktickDoubleQuote implements Querier.BacktickDoubleQuote.
 func (q *DBQuerier) BacktickDoubleQuote(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickDoubleQuote")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, backtickDoubleQuoteSQL)
 	if err != nil {
 		return "", fmt.Errorf("query BacktickDoubleQuote: %w", q.errWrap(err))
@@ -182,22 +355,121 @@ func (q *DBQuerier) BacktickDoubleQuote(ctx context.Context) (string, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedBacktickDoubleQuote struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedBacktickDoubleQuote) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedBacktickDoubleQuote) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedBacktickDoubleQuote) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedBacktickDoubleQuote) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueBacktickDoubleQuote implements Querier.QueueBacktickDoubleQuote.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueBacktickDoubleQuote(batch Batcher) *QueuedBacktickDoubleQuote {
+	queued := &QueuedBacktickDoubleQuote{}
+
+	queuedQuery := batch.Queue(backtickDoubleQuoteSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const backtickBackslashNSQL = "SELECT '`\\n';"
 
 // BacktickBackslashN implements Querier.BacktickBackslashN.
 func (q *DBQuerier) BacktickBackslashN(ctx context.Context) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BacktickBackslashN")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, backtickBackslashNSQL)
 	if err != nil {
 		return "", fmt.Errorf("query BacktickBackslashN: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
+}
+
+type QueuedBacktickBackslashN struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedBacktickBackslashN) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedBacktickBackslashN) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedBacktickBackslashN) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedBacktickBackslashN) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueBacktickBackslashN implements Querier.QueueBacktickBackslashN.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueBacktickBackslashN(batch Batcher) *QueuedBacktickBackslashN {
+	queued := &QueuedBacktickBackslashN{}
+
+	queuedQuery := batch.Queue(backtickBackslashNSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const illegalNameSymbolsSQL = "SELECT '`\\n' as \"$\", $1 as \"foo.bar!@#$%&*()\"\"--+\";"
@@ -210,11 +482,6 @@ type IllegalNameSymbolsRow struct {
 // IllegalNameSymbols implements Querier.IllegalNameSymbols.
 func (q *DBQuerier) IllegalNameSymbols(ctx context.Context, helloWorld string) (IllegalNameSymbolsRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "IllegalNameSymbols")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return IllegalNameSymbolsRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, illegalNameSymbolsSQL, helloWorld)
 	if err != nil {
 		return IllegalNameSymbolsRow{}, fmt.Errorf("query IllegalNameSymbols: %w", q.errWrap(err))
@@ -223,16 +490,63 @@ func (q *DBQuerier) IllegalNameSymbols(ctx context.Context, helloWorld string) (
 	return res, q.errWrap(err)
 }
 
+type QueuedIllegalNameSymbols struct {
+	wrapError func(err error) error
+	onResult  func(IllegalNameSymbolsRow) error
+}
+
+func (q *QueuedIllegalNameSymbols) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedIllegalNameSymbols) OnResult(onResult func(IllegalNameSymbolsRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedIllegalNameSymbols) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedIllegalNameSymbols) runOnResult(result IllegalNameSymbolsRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueIllegalNameSymbols implements Querier.QueueIllegalNameSymbols.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueIllegalNameSymbols(batch Batcher, helloWorld string) *QueuedIllegalNameSymbols {
+	queued := &QueuedIllegalNameSymbols{}
+
+	queuedQuery := batch.Queue(illegalNameSymbolsSQL, helloWorld)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[IllegalNameSymbolsRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const spaceAfterSQL = `SELECT $1;`
 
 // SpaceAfter implements Querier.SpaceAfter.
 func (q *DBQuerier) SpaceAfter(ctx context.Context, space string) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "SpaceAfter")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, spaceAfterSQL, space)
 	if err != nil {
 		return "", fmt.Errorf("query SpaceAfter: %w", q.errWrap(err))
@@ -241,16 +555,63 @@ func (q *DBQuerier) SpaceAfter(ctx context.Context, space string) (string, error
 	return res, q.errWrap(err)
 }
 
+type QueuedSpaceAfter struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedSpaceAfter) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedSpaceAfter) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedSpaceAfter) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedSpaceAfter) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueSpaceAfter implements Querier.QueueSpaceAfter.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueSpaceAfter(batch Batcher, space string) *QueuedSpaceAfter {
+	queued := &QueuedSpaceAfter{}
+
+	queuedQuery := batch.Queue(spaceAfterSQL, space)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const badEnumNameSQL = `SELECT 'inconvertible_enum_name'::"123";`
 
 // BadEnumName implements Querier.BadEnumName.
 func (q *DBQuerier) BadEnumName(ctx context.Context) (UnnamedEnum123, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "BadEnumName")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return UnnamedEnum123(""), q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, badEnumNameSQL)
 	if err != nil {
 		return UnnamedEnum123(""), fmt.Errorf("query BadEnumName: %w", q.errWrap(err))
@@ -259,20 +620,119 @@ func (q *DBQuerier) BadEnumName(ctx context.Context) (UnnamedEnum123, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedBadEnumName struct {
+	wrapError func(err error) error
+	onResult  func(UnnamedEnum123) error
+}
+
+func (q *QueuedBadEnumName) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedBadEnumName) OnResult(onResult func(UnnamedEnum123) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedBadEnumName) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedBadEnumName) runOnResult(result UnnamedEnum123) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueBadEnumName implements Querier.QueueBadEnumName.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueBadEnumName(batch Batcher) *QueuedBadEnumName {
+	queued := &QueuedBadEnumName{}
+
+	queuedQuery := batch.Queue(badEnumNameSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[UnnamedEnum123])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const goKeywordSQL = `SELECT $1::text;`
 
 // GoKeyword implements Querier.GoKeyword.
 func (q *DBQuerier) GoKeyword(ctx context.Context, go_ string) (string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "GoKeyword")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return "", q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, goKeywordSQL, go_)
 	if err != nil {
 		return "", fmt.Errorf("query GoKeyword: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
+}
+
+type QueuedGoKeyword struct {
+	wrapError func(err error) error
+	onResult  func(string) error
+}
+
+func (q *QueuedGoKeyword) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedGoKeyword) OnResult(onResult func(string) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedGoKeyword) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedGoKeyword) runOnResult(result string) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueGoKeyword implements Querier.QueueGoKeyword.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueGoKeyword(batch Batcher, go_ string) *QueuedGoKeyword {
+	queued := &QueuedGoKeyword{}
+
+	queuedQuery := batch.Queue(goKeywordSQL, go_)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[string])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }

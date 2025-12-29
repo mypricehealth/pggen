@@ -23,6 +23,12 @@ type Querier interface {
 	CustomMyInt(ctx context.Context) (int, error)
 
 	IntArray(ctx context.Context) ([][]int32, error)
+
+	QueueCustomTypes(batch Batcher) *QueuedCustomTypes
+
+	QueueCustomMyInt(batch Batcher) *QueuedCustomMyInt
+
+	QueueIntArray(batch Batcher) *QueuedIntArray
 }
 
 var _ Querier = &DBQuerier{}
@@ -41,14 +47,25 @@ type genericConn interface {
 	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
 }
 
-// NewQuerier creates a DBQuerier that implements Querier.
-func NewQuerier(conn genericConn) *DBQuerier {
-	return &DBQuerier{
-		conn: conn,
-		errWrap: func(err error) error {
-			return err
-		},
+type Batcher interface {
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
+}
+
+// NewQuerier creates a DBQuerier
+func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
+	errWrap := func(err error) error {
+		return err
 	}
+
+	err := registerTypes(context.Background(), conn)
+	if err != nil {
+		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
+	}
+
+	return &DBQuerier{
+		conn:    conn,
+		errWrap: errWrap,
+	}, nil
 }
 
 var registerOnce sync.Once
@@ -89,11 +106,6 @@ type CustomTypesRow struct {
 // CustomTypes implements Querier.CustomTypes.
 func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CustomTypes")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return CustomTypesRow{}, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, customTypesSQL)
 	if err != nil {
 		return CustomTypesRow{}, fmt.Errorf("query CustomTypes: %w", q.errWrap(err))
@@ -102,16 +114,63 @@ func (q *DBQuerier) CustomTypes(ctx context.Context) (CustomTypesRow, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedCustomTypes struct {
+	wrapError func(err error) error
+	onResult  func(CustomTypesRow) error
+}
+
+func (q *QueuedCustomTypes) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCustomTypes) OnResult(onResult func(CustomTypesRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCustomTypes) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCustomTypes) runOnResult(result CustomTypesRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueCustomTypes implements Querier.QueueCustomTypes.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueCustomTypes(batch Batcher) *QueuedCustomTypes {
+	queued := &QueuedCustomTypes{}
+
+	queuedQuery := batch.Queue(customTypesSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[CustomTypesRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const customMyIntSQL = `SELECT '5'::my_int as int5;`
 
 // CustomMyInt implements Querier.CustomMyInt.
 func (q *DBQuerier) CustomMyInt(ctx context.Context) (int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CustomMyInt")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return 0, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, customMyIntSQL)
 	if err != nil {
 		return 0, fmt.Errorf("query CustomMyInt: %w", q.errWrap(err))
@@ -120,20 +179,119 @@ func (q *DBQuerier) CustomMyInt(ctx context.Context) (int, error) {
 	return res, q.errWrap(err)
 }
 
+type QueuedCustomMyInt struct {
+	wrapError func(err error) error
+	onResult  func(int) error
+}
+
+func (q *QueuedCustomMyInt) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedCustomMyInt) OnResult(onResult func(int) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedCustomMyInt) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedCustomMyInt) runOnResult(result int) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueCustomMyInt implements Querier.QueueCustomMyInt.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueCustomMyInt(batch Batcher) *QueuedCustomMyInt {
+	queued := &QueuedCustomMyInt{}
+
+	queuedQuery := batch.Queue(customMyIntSQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
+}
+
 const intArraySQL = `SELECT ARRAY ['5', '6', '7']::int[] as ints;`
 
 // IntArray implements Querier.IntArray.
 func (q *DBQuerier) IntArray(ctx context.Context) ([][]int32, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "IntArray")
-
-	err := registerTypes(ctx, q.conn)
-	if err != nil {
-		return nil, q.errWrap(err)
-	}
 	rows, err := q.conn.Query(ctx, intArraySQL)
 	if err != nil {
 		return nil, fmt.Errorf("query IntArray: %w", q.errWrap(err))
 	}
 	res, err := pgx.CollectRows(rows, pgx.RowTo[[]int32])
 	return res, q.errWrap(err)
+}
+
+type QueuedIntArray struct {
+	wrapError func(err error) error
+	onResult  func([][]int32) error
+}
+
+func (q *QueuedIntArray) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedIntArray) OnResult(onResult func([][]int32) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedIntArray) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedIntArray) runOnResult(result [][]int32) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueIntArray implements Querier.QueueIntArray.
+//
+//nolint:contextcheck
+func (q *DBQuerier) QueueIntArray(batch Batcher) *QueuedIntArray {
+	queued := &QueuedIntArray{}
+
+	queuedQuery := batch.Queue(intArraySQL)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowTo[[]int32])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
