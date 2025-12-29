@@ -5,7 +5,6 @@ package author
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
@@ -95,7 +94,7 @@ type genericConn interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
-	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+	LoadTypes(ctx context.Context, typeNames []string) ([]*pgtype.Type, error)
 }
 
 type Batcher interface {
@@ -108,7 +107,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -119,25 +118,38 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 	}, nil
 }
 
-var registerOnce sync.Once
-var registerErr error
-
 func registerTypes(ctx context.Context, conn genericConn) error {
-	registerOnce.Do(func() {
-		typeMap := conn.TypeMap()
+	typeMap := conn.TypeMap()
 
-		pgxdecimal.Register(typeMap)
-		for _, typ := range typesToRegister {
-			dt, err := conn.LoadType(ctx, typ)
-			if err != nil {
-				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
-				return
-			}
-			typeMap.RegisterType(dt)
+	// The work pgxdecimal.Register does involves no queries so it may as well
+	// be free.
+	pgxdecimal.Register(typeMap)
+
+	// Make sure to only register the necessary types. This is really only
+	// important for the frequent path of _no_ registrations necessary which
+	// would cause an unnecessary extra roundtrip on every query.
+	needsRegistering := make([]string, 0, len(typesToRegister))
+	for _, typeName := range typesToRegister {
+		_, exists := typeMap.TypeForName(typeName)
+		if exists {
+			continue
 		}
-	})
 
-	return registerErr
+		needsRegistering = append(needsRegistering, typeName)
+	}
+
+	if len(needsRegistering) == 0 {
+		return nil
+	}
+
+	types, err := conn.LoadTypes(ctx, needsRegistering)
+	if err != nil {
+		return fmt.Errorf("could not register types: %w", err)
+	}
+
+	typeMap.RegisterTypes(types)
+
+	return nil
 }
 
 var typesToRegister = []string{}
@@ -197,8 +209,6 @@ func (q *QueuedFindAuthorByID) runOnResult(result FindAuthorByIDRow) error {
 }
 
 // QueueFindAuthorByID implements Querier.QueueFindAuthorByID.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindAuthorByID(batch Batcher, authorID int32) *QueuedFindAuthorByID {
 	queued := &QueuedFindAuthorByID{}
 
@@ -269,8 +279,6 @@ func (q *QueuedFindAuthors) runOnResult(result []FindAuthorsRow) error {
 }
 
 // QueueFindAuthors implements Querier.QueueFindAuthors.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindAuthors(batch Batcher, firstName string) *QueuedFindAuthors {
 	queued := &QueuedFindAuthors{}
 
@@ -339,8 +347,6 @@ func (q *QueuedFindAuthorNames) runOnResult(result []FindAuthorNamesRow) error {
 }
 
 // QueueFindAuthorNames implements Querier.QueueFindAuthorNames.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindAuthorNames(batch Batcher, authorID int32) *QueuedFindAuthorNames {
 	queued := &QueuedFindAuthorNames{}
 
@@ -404,8 +410,6 @@ func (q *QueuedFindFirstNames) runOnResult(result []*string) error {
 }
 
 // QueueFindFirstNames implements Querier.QueueFindFirstNames.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindFirstNames(batch Batcher, authorID int32) *QueuedFindFirstNames {
 	queued := &QueuedFindFirstNames{}
 
@@ -468,8 +472,6 @@ func (q *QueuedDeleteAuthors) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueDeleteAuthors implements Querier.QueueDeleteAuthors.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueDeleteAuthors(batch Batcher) *QueuedDeleteAuthors {
 	queued := &QueuedDeleteAuthors{}
 
@@ -528,8 +530,6 @@ func (q *QueuedDeleteAuthorsByFirstName) runOnResult(result pgconn.CommandTag) e
 }
 
 // QueueDeleteAuthorsByFirstName implements Querier.QueueDeleteAuthorsByFirstName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueDeleteAuthorsByFirstName(batch Batcher, firstName string) *QueuedDeleteAuthorsByFirstName {
 	queued := &QueuedDeleteAuthorsByFirstName{}
 
@@ -598,8 +598,6 @@ func (q *QueuedDeleteAuthorsByFullName) runOnResult(result pgconn.CommandTag) er
 }
 
 // QueueDeleteAuthorsByFullName implements Querier.QueueDeleteAuthorsByFullName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueDeleteAuthorsByFullName(batch Batcher, params DeleteAuthorsByFullNameParams) *QueuedDeleteAuthorsByFullName {
 	queued := &QueuedDeleteAuthorsByFullName{}
 
@@ -661,8 +659,6 @@ func (q *QueuedInsertAuthor) runOnResult(result int32) error {
 }
 
 // QueueInsertAuthor implements Querier.QueueInsertAuthor.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertAuthor(batch Batcher, firstName string, lastName string) *QueuedInsertAuthor {
 	queued := &QueuedInsertAuthor{}
 
@@ -741,8 +737,6 @@ func (q *QueuedInsertAuthorSuffix) runOnResult(result InsertAuthorSuffixRow) err
 }
 
 // QueueInsertAuthorSuffix implements Querier.QueueInsertAuthorSuffix.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertAuthorSuffix(batch Batcher, params InsertAuthorSuffixParams) *QueuedInsertAuthorSuffix {
 	queued := &QueuedInsertAuthorSuffix{}
 
@@ -806,8 +800,6 @@ func (q *QueuedStringAggFirstName) runOnResult(result *string) error {
 }
 
 // QueueStringAggFirstName implements Querier.QueueStringAggFirstName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueStringAggFirstName(batch Batcher, authorID int32) *QueuedStringAggFirstName {
 	queued := &QueuedStringAggFirstName{}
 
@@ -871,8 +863,6 @@ func (q *QueuedArrayAggFirstName) runOnResult(result []string) error {
 }
 
 // QueueArrayAggFirstName implements Querier.QueueArrayAggFirstName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueArrayAggFirstName(batch Batcher, authorID int32) *QueuedArrayAggFirstName {
 	queued := &QueuedArrayAggFirstName{}
 

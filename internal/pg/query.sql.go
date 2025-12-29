@@ -5,7 +5,6 @@ package pg
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
@@ -69,7 +68,7 @@ type genericConn interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
-	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+	LoadTypes(ctx context.Context, typeNames []string) ([]*pgtype.Type, error)
 }
 
 type Batcher interface {
@@ -82,7 +81,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -93,25 +92,38 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 	}, nil
 }
 
-var registerOnce sync.Once
-var registerErr error
-
 func registerTypes(ctx context.Context, conn genericConn) error {
-	registerOnce.Do(func() {
-		typeMap := conn.TypeMap()
+	typeMap := conn.TypeMap()
 
-		pgxdecimal.Register(typeMap)
-		for _, typ := range typesToRegister {
-			dt, err := conn.LoadType(ctx, typ)
-			if err != nil {
-				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
-				return
-			}
-			typeMap.RegisterType(dt)
+	// The work pgxdecimal.Register does involves no queries so it may as well
+	// be free.
+	pgxdecimal.Register(typeMap)
+
+	// Make sure to only register the necessary types. This is really only
+	// important for the frequent path of _no_ registrations necessary which
+	// would cause an unnecessary extra roundtrip on every query.
+	needsRegistering := make([]string, 0, len(typesToRegister))
+	for _, typeName := range typesToRegister {
+		_, exists := typeMap.TypeForName(typeName)
+		if exists {
+			continue
 		}
-	})
 
-	return registerErr
+		needsRegistering = append(needsRegistering, typeName)
+	}
+
+	if len(needsRegistering) == 0 {
+		return nil
+	}
+
+	types, err := conn.LoadTypes(ctx, needsRegistering)
+	if err != nil {
+		return fmt.Errorf("could not register types: %w", err)
+	}
+
+	typeMap.RegisterTypes(types)
+
+	return nil
 }
 
 var typesToRegister = []string{}
@@ -145,6 +157,8 @@ SELECT
   typ.oid           AS oid,
   -- typename: Data type name.
   typ.typname::text AS type_name,
+  nsp.nspname::text AS namespace_name,
+  nsp.oid           AS namespace_oid,
   enum.enum_oids    AS child_oids,
   enum.enum_orders  AS orders,
   enum.enum_labels  AS labels,
@@ -160,19 +174,22 @@ SELECT
   -- to the type's input converter to produce a constant.
   COALESCE(typ.typdefault, '')    AS default_expr
 FROM pg_type typ
+  JOIN pg_namespace nsp ON typ.typnamespace = nsp.oid
   JOIN enums enum ON typ.oid = enum.enum_type
 WHERE typ.typisdefined
   AND typ.typtype = 'e'
   AND typ.oid = ANY ($1::oid[]);`
 
 type FindEnumTypesRow struct {
-	OID         uint32    `json:"oid"`
-	TypeName    string    `json:"type_name"`
-	ChildOIDs   []int     `json:"child_oids"`
-	Orders      []float32 `json:"orders"`
-	Labels      []string  `json:"labels"`
-	TypeKind    byte      `json:"type_kind"`
-	DefaultExpr string    `json:"default_expr"`
+	OID           uint32    `json:"oid"`
+	TypeName      string    `json:"type_name"`
+	NamespaceName string    `json:"namespace_name"`
+	NamespaceOID  uint32    `json:"namespace_oid"`
+	ChildOIDs     []int     `json:"child_oids"`
+	Orders        []float32 `json:"orders"`
+	Labels        []string  `json:"labels"`
+	TypeKind      byte      `json:"type_kind"`
+	DefaultExpr   string    `json:"default_expr"`
 }
 
 // FindEnumTypes implements Querier.FindEnumTypes.
@@ -216,8 +233,6 @@ func (q *QueuedFindEnumTypes) runOnResult(result []FindEnumTypesRow) error {
 }
 
 // QueueFindEnumTypes implements Querier.QueueFindEnumTypes.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindEnumTypes(batch Batcher, oids []uint32) *QueuedFindEnumTypes {
 	queued := &QueuedFindEnumTypes{}
 
@@ -320,8 +335,6 @@ func (q *QueuedFindArrayTypes) runOnResult(result []FindArrayTypesRow) error {
 }
 
 // QueueFindArrayTypes implements Querier.QueueFindArrayTypes.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindArrayTypes(batch Batcher, oids []uint32) *QueuedFindArrayTypes {
 	queued := &QueuedFindArrayTypes{}
 
@@ -429,8 +442,6 @@ func (q *QueuedFindCompositeTypes) runOnResult(result []FindCompositeTypesRow) e
 }
 
 // QueueFindCompositeTypes implements Querier.QueueFindCompositeTypes.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindCompositeTypes(batch Batcher, oids []uint32) *QueuedFindCompositeTypes {
 	queued := &QueuedFindCompositeTypes{}
 
@@ -520,8 +531,6 @@ func (q *QueuedFindDescendantOIDs) runOnResult(result []uint32) error {
 }
 
 // QueueFindDescendantOIDs implements Querier.QueueFindDescendantOIDs.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindDescendantOIDs(batch Batcher, oids []uint32) *QueuedFindDescendantOIDs {
 	queued := &QueuedFindDescendantOIDs{}
 
@@ -589,8 +598,6 @@ func (q *QueuedFindOIDByName) runOnResult(result uint32) error {
 }
 
 // QueueFindOIDByName implements Querier.QueueFindOIDByName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOIDByName(batch Batcher, name string) *QueuedFindOIDByName {
 	queued := &QueuedFindOIDByName{}
 
@@ -656,8 +663,6 @@ func (q *QueuedFindOIDName) runOnResult(result string) error {
 }
 
 // QueueFindOIDName implements Querier.QueueFindOIDName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOIDName(batch Batcher, oid uint32) *QueuedFindOIDName {
 	queued := &QueuedFindOIDName{}
 
@@ -678,14 +683,20 @@ func (q *DBQuerier) QueueFindOIDName(batch Batcher, oid uint32) *QueuedFindOIDNa
 	return queued
 }
 
-const findOIDNamesSQL = `SELECT oid, typname AS name, typtype AS kind
-FROM pg_type
-WHERE oid = ANY ($1::oid[]);`
+const findOIDNamesSQL = `SELECT
+    typ.oid,
+    nsp.nspname AS namespace_name,
+    typname     AS name,
+    typtype     AS kind
+FROM pg_type typ
+  JOIN pg_namespace nsp ON typ.typnamespace = nsp.oid
+WHERE typ.oid = ANY ($1::oid[]);`
 
 type FindOIDNamesRow struct {
-	OID  uint32 `json:"oid"`
-	Name string `json:"name"`
-	Kind byte   `json:"kind"`
+	OID           uint32 `json:"oid"`
+	NamespaceName string `json:"namespace_name"`
+	Name          string `json:"name"`
+	Kind          byte   `json:"kind"`
 }
 
 // FindOIDNames implements Querier.FindOIDNames.
@@ -729,8 +740,6 @@ func (q *QueuedFindOIDNames) runOnResult(result []FindOIDNamesRow) error {
 }
 
 // QueueFindOIDNames implements Querier.QueueFindOIDNames.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueFindOIDNames(batch Batcher, oid []uint32) *QueuedFindOIDNames {
 	queued := &QueuedFindOIDNames{}
 

@@ -5,7 +5,6 @@ package syntax
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
@@ -83,7 +82,7 @@ type genericConn interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
-	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+	LoadTypes(ctx context.Context, typeNames []string) ([]*pgtype.Type, error)
 }
 
 type Batcher interface {
@@ -96,7 +95,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -119,25 +118,38 @@ const (
 
 func (u UnnamedEnum123) String() string { return string(u) }
 
-var registerOnce sync.Once
-var registerErr error
-
 func registerTypes(ctx context.Context, conn genericConn) error {
-	registerOnce.Do(func() {
-		typeMap := conn.TypeMap()
+	typeMap := conn.TypeMap()
 
-		pgxdecimal.Register(typeMap)
-		for _, typ := range typesToRegister {
-			dt, err := conn.LoadType(ctx, typ)
-			if err != nil {
-				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
-				return
-			}
-			typeMap.RegisterType(dt)
+	// The work pgxdecimal.Register does involves no queries so it may as well
+	// be free.
+	pgxdecimal.Register(typeMap)
+
+	// Make sure to only register the necessary types. This is really only
+	// important for the frequent path of _no_ registrations necessary which
+	// would cause an unnecessary extra roundtrip on every query.
+	needsRegistering := make([]string, 0, len(typesToRegister))
+	for _, typeName := range typesToRegister {
+		_, exists := typeMap.TypeForName(typeName)
+		if exists {
+			continue
 		}
-	})
 
-	return registerErr
+		needsRegistering = append(needsRegistering, typeName)
+	}
+
+	if len(needsRegistering) == 0 {
+		return nil
+	}
+
+	types, err := conn.LoadTypes(ctx, needsRegistering)
+	if err != nil {
+		return fmt.Errorf("could not register types: %w", err)
+	}
+
+	typeMap.RegisterTypes(types)
+
+	return nil
 }
 
 var typesToRegister = []string{}
@@ -190,8 +202,6 @@ func (q *QueuedBacktick) runOnResult(result string) error {
 }
 
 // QueueBacktick implements Querier.QueueBacktick.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktick(batch Batcher) *QueuedBacktick {
 	queued := &QueuedBacktick{}
 
@@ -255,8 +265,6 @@ func (q *QueuedBacktickQuoteBacktick) runOnResult(result string) error {
 }
 
 // QueueBacktickQuoteBacktick implements Querier.QueueBacktickQuoteBacktick.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickQuoteBacktick(batch Batcher) *QueuedBacktickQuoteBacktick {
 	queued := &QueuedBacktickQuoteBacktick{}
 
@@ -320,8 +328,6 @@ func (q *QueuedBacktickNewline) runOnResult(result string) error {
 }
 
 // QueueBacktickNewline implements Querier.QueueBacktickNewline.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickNewline(batch Batcher) *QueuedBacktickNewline {
 	queued := &QueuedBacktickNewline{}
 
@@ -385,8 +391,6 @@ func (q *QueuedBacktickDoubleQuote) runOnResult(result string) error {
 }
 
 // QueueBacktickDoubleQuote implements Querier.QueueBacktickDoubleQuote.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickDoubleQuote(batch Batcher) *QueuedBacktickDoubleQuote {
 	queued := &QueuedBacktickDoubleQuote{}
 
@@ -450,8 +454,6 @@ func (q *QueuedBacktickBackslashN) runOnResult(result string) error {
 }
 
 // QueueBacktickBackslashN implements Querier.QueueBacktickBackslashN.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBacktickBackslashN(batch Batcher) *QueuedBacktickBackslashN {
 	queued := &QueuedBacktickBackslashN{}
 
@@ -520,8 +522,6 @@ func (q *QueuedIllegalNameSymbols) runOnResult(result IllegalNameSymbolsRow) err
 }
 
 // QueueIllegalNameSymbols implements Querier.QueueIllegalNameSymbols.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueIllegalNameSymbols(batch Batcher, helloWorld string) *QueuedIllegalNameSymbols {
 	queued := &QueuedIllegalNameSymbols{}
 
@@ -585,8 +585,6 @@ func (q *QueuedSpaceAfter) runOnResult(result string) error {
 }
 
 // QueueSpaceAfter implements Querier.QueueSpaceAfter.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueSpaceAfter(batch Batcher, space string) *QueuedSpaceAfter {
 	queued := &QueuedSpaceAfter{}
 
@@ -650,8 +648,6 @@ func (q *QueuedBadEnumName) runOnResult(result UnnamedEnum123) error {
 }
 
 // QueueBadEnumName implements Querier.QueueBadEnumName.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBadEnumName(batch Batcher) *QueuedBadEnumName {
 	queued := &QueuedBadEnumName{}
 
@@ -715,8 +711,6 @@ func (q *QueuedGoKeyword) runOnResult(result string) error {
 }
 
 // QueueGoKeyword implements Querier.QueueGoKeyword.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueGoKeyword(batch Batcher, go_ string) *QueuedGoKeyword {
 	queued := &QueuedGoKeyword{}
 

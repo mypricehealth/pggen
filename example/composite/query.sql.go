@@ -5,7 +5,6 @@ package composite
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
@@ -51,7 +50,7 @@ type genericConn interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
-	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+	LoadTypes(ctx context.Context, typeNames []string) ([]*pgtype.Type, error)
 }
 
 type Batcher interface {
@@ -64,7 +63,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -96,25 +95,38 @@ type UserEmail struct {
 	Email pgtype.Text `json:"email"`
 }
 
-var registerOnce sync.Once
-var registerErr error
-
 func registerTypes(ctx context.Context, conn genericConn) error {
-	registerOnce.Do(func() {
-		typeMap := conn.TypeMap()
+	typeMap := conn.TypeMap()
 
-		pgxdecimal.Register(typeMap)
-		for _, typ := range typesToRegister {
-			dt, err := conn.LoadType(ctx, typ)
-			if err != nil {
-				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
-				return
-			}
-			typeMap.RegisterType(dt)
+	// The work pgxdecimal.Register does involves no queries so it may as well
+	// be free.
+	pgxdecimal.Register(typeMap)
+
+	// Make sure to only register the necessary types. This is really only
+	// important for the frequent path of _no_ registrations necessary which
+	// would cause an unnecessary extra roundtrip on every query.
+	needsRegistering := make([]string, 0, len(typesToRegister))
+	for _, typeName := range typesToRegister {
+		_, exists := typeMap.TypeForName(typeName)
+		if exists {
+			continue
 		}
-	})
 
-	return registerErr
+		needsRegistering = append(needsRegistering, typeName)
+	}
+
+	if len(needsRegistering) == 0 {
+		return nil
+	}
+
+	types, err := conn.LoadTypes(ctx, needsRegistering)
+	if err != nil {
+		return fmt.Errorf("could not register types: %w", err)
+	}
+
+	typeMap.RegisterTypes(types)
+
+	return nil
 }
 
 var typesToRegister = []string{}
@@ -130,6 +142,7 @@ var _ = addTypeToRegister("public.blocks")
 
 var _ = addTypeToRegister("public.user_email")
 
+var _ = addTypeToRegister("public.blocks")
 var _ = addTypeToRegister("public._blocks")
 
 const searchScreenshotsSQL = `SELECT
@@ -194,8 +207,6 @@ func (q *QueuedSearchScreenshots) runOnResult(result []SearchScreenshotsRow) err
 }
 
 // QueueSearchScreenshots implements Querier.QueueSearchScreenshots.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueSearchScreenshots(batch Batcher, params SearchScreenshotsParams) *QueuedSearchScreenshots {
 	queued := &QueuedSearchScreenshots{}
 
@@ -272,8 +283,6 @@ func (q *QueuedSearchScreenshotsOneCol) runOnResult(result [][]Blocks) error {
 }
 
 // QueueSearchScreenshotsOneCol implements Querier.QueueSearchScreenshotsOneCol.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueSearchScreenshotsOneCol(batch Batcher, params SearchScreenshotsOneColParams) *QueuedSearchScreenshotsOneCol {
 	queued := &QueuedSearchScreenshotsOneCol{}
 
@@ -350,8 +359,6 @@ func (q *QueuedInsertScreenshotBlocks) runOnResult(result InsertScreenshotBlocks
 }
 
 // QueueInsertScreenshotBlocks implements Querier.QueueInsertScreenshotBlocks.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueInsertScreenshotBlocks(batch Batcher, screenshotID int, body string) *QueuedInsertScreenshotBlocks {
 	queued := &QueuedInsertScreenshotBlocks{}
 
@@ -415,8 +422,6 @@ func (q *QueuedArraysInput) runOnResult(result Arrays) error {
 }
 
 // QueueArraysInput implements Querier.QueueArraysInput.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueArraysInput(batch Batcher, arrays Arrays) *QueuedArraysInput {
 	queued := &QueuedArraysInput{}
 
@@ -480,8 +485,6 @@ func (q *QueuedUserEmails) runOnResult(result UserEmail) error {
 }
 
 // QueueUserEmails implements Querier.QueueUserEmails.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueUserEmails(batch Batcher) *QueuedUserEmails {
 	queued := &QueuedUserEmails{}
 

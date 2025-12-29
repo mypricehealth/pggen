@@ -5,7 +5,6 @@ package void
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
@@ -51,7 +50,7 @@ type genericConn interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	TypeMap() *pgtype.Map
-	LoadType(ctx context.Context, typeName string) (*pgtype.Type, error)
+	LoadTypes(ctx context.Context, typeNames []string) ([]*pgtype.Type, error)
 }
 
 type Batcher interface {
@@ -64,7 +63,7 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 		return err
 	}
 
-	err := registerTypes(context.Background(), conn)
+	err := registerTypes(ctx, conn)
 	if err != nil {
 		return nil, errWrap(fmt.Errorf("could not register types: %w", err))
 	}
@@ -75,25 +74,38 @@ func NewQuerier(ctx context.Context, conn genericConn) (*DBQuerier, error) {
 	}, nil
 }
 
-var registerOnce sync.Once
-var registerErr error
-
 func registerTypes(ctx context.Context, conn genericConn) error {
-	registerOnce.Do(func() {
-		typeMap := conn.TypeMap()
+	typeMap := conn.TypeMap()
 
-		pgxdecimal.Register(typeMap)
-		for _, typ := range typesToRegister {
-			dt, err := conn.LoadType(ctx, typ)
-			if err != nil {
-				registerErr = fmt.Errorf("could not register type %q: %w", typ, err)
-				return
-			}
-			typeMap.RegisterType(dt)
+	// The work pgxdecimal.Register does involves no queries so it may as well
+	// be free.
+	pgxdecimal.Register(typeMap)
+
+	// Make sure to only register the necessary types. This is really only
+	// important for the frequent path of _no_ registrations necessary which
+	// would cause an unnecessary extra roundtrip on every query.
+	needsRegistering := make([]string, 0, len(typesToRegister))
+	for _, typeName := range typesToRegister {
+		_, exists := typeMap.TypeForName(typeName)
+		if exists {
+			continue
 		}
-	})
 
-	return registerErr
+		needsRegistering = append(needsRegistering, typeName)
+	}
+
+	if len(needsRegistering) == 0 {
+		return nil
+	}
+
+	types, err := conn.LoadTypes(ctx, needsRegistering)
+	if err != nil {
+		return fmt.Errorf("could not register types: %w", err)
+	}
+
+	typeMap.RegisterTypes(types)
+
+	return nil
 }
 
 var typesToRegister = []string{}
@@ -145,8 +157,6 @@ func (q *QueuedVoidOnly) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueVoidOnly implements Querier.QueueVoidOnly.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidOnly(batch Batcher) *QueuedVoidOnly {
 	queued := &QueuedVoidOnly{}
 
@@ -205,8 +215,6 @@ func (q *QueuedVoidOnlyTwoParams) runOnResult(result pgconn.CommandTag) error {
 }
 
 // QueueVoidOnlyTwoParams implements Querier.QueueVoidOnlyTwoParams.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidOnlyTwoParams(batch Batcher, id int32) *QueuedVoidOnlyTwoParams {
 	queued := &QueuedVoidOnlyTwoParams{}
 
@@ -266,8 +274,6 @@ func (q *QueuedVoidTwo) runOnResult(result string) error {
 }
 
 // QueueVoidTwo implements Querier.QueueVoidTwo.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidTwo(batch Batcher) *QueuedVoidTwo {
 	queued := &QueuedVoidTwo{}
 
@@ -336,8 +342,6 @@ func (q *QueuedVoidThree) runOnResult(result VoidThreeRow) error {
 }
 
 // QueueVoidThree implements Querier.QueueVoidThree.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidThree(batch Batcher) *QueuedVoidThree {
 	queued := &QueuedVoidThree{}
 
@@ -401,8 +405,6 @@ func (q *QueuedVoidThree2) runOnResult(result []string) error {
 }
 
 // QueueVoidThree2 implements Querier.QueueVoidThree2.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueVoidThree2(batch Batcher) *QueuedVoidThree2 {
 	queued := &QueuedVoidThree2{}
 

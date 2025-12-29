@@ -52,8 +52,6 @@ func (q *QueuedBravo) runOnResult(result string) error {
 }
 
 // QueueBravo implements Querier.QueueBravo.
-//
-//nolint:contextcheck
 func (q *DBQuerier) QueueBravo(batch Batcher) *QueuedBravo {
 	queued := &QueuedBravo{}
 

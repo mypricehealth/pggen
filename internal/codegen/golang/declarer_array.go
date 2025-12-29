@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
+	"github.com/mypricehealth/pggen/internal/pg"
 )
 
 // NameArrayTranscoderFunc returns the function name that creates a
@@ -72,14 +73,12 @@ func (a ArrayTranscoderDeclarer) DedupeKey() string {
 
 func (a ArrayTranscoderDeclarer) Declare(string) (string, error) {
 	sb := &strings.Builder{}
-	funcName := NameArrayTranscoderFunc(a.typ)
 
-	sb.WriteString("var _ = addTypeToRegister(\"")
-	sb.WriteString(a.typ.PgArray.Schema)
-	sb.WriteString(".")
-	sb.WriteString(a.typ.PgArray.Name)
-	sb.WriteString("\")\n")
+	addTypeToRegister(sb, a.typ.PgArray)
+
 	return sb.String(), nil
+
+	funcName := NameArrayTranscoderFunc(a.typ)
 
 	// Doc comment
 	sb.WriteString("// ")
@@ -116,6 +115,42 @@ func (a ArrayTranscoderDeclarer) Declare(string) (string, error) {
 	sb.WriteString("}")
 
 	return sb.String(), nil
+}
+
+func addTypeToRegister(sb *strings.Builder, typ pg.Type) {
+	var schema string
+	var name string
+
+	switch v := typ.(type) {
+	case pg.ArrayType:
+		// The element needs to be registered before.
+		addTypeToRegister(sb, v.Elem)
+
+		schema = v.Schema
+		name = v.Name
+	case pg.EnumType:
+		schema = v.Schema
+		name = v.Name
+	case pg.DomainType:
+		schema = v.Schema
+		name = v.Name
+	case pg.CompositeType:
+		schema = v.Schema
+		name = v.Name
+	case pg.UnknownType:
+		schema = v.Schema
+		name = v.Name
+	case pg.BaseType:
+		return // Fundamental types are already registered
+	default:
+		panic(fmt.Errorf("invalid typ of type %T: %v", typ, typ))
+	}
+
+	sb.WriteString("var _ = addTypeToRegister(\"")
+	sb.WriteString(schema)
+	sb.WriteString(".")
+	sb.WriteString(name)
+	sb.WriteString("\")\n")
 }
 
 // ArrayInitDeclarer declares a new Go function that creates an *initialized*

@@ -49,8 +49,10 @@ type (
 	// BaseType is a fundamental Postgres type like text and bool.
 	// https://www.postgresql.org/docs/13/catalog-pg-type.html
 	BaseType struct {
-		ID   uint32 // pg_type.oid: row identifier
-		Name string // pg_type.typname: data type name
+		// pg_type.oid: row identifier
+		ID uint32
+		// pg_type.typname: data type name
+		Name string
 	}
 
 	// VoidType is an empty type. A void type doesn't appear in output, but it's
@@ -72,6 +74,8 @@ type (
 
 	EnumType struct {
 		ID uint32 // pg_type.oid: row identifier
+		// pg_namespace.nspname: name of the schema
+		Schema string
 		// The name of the enum, like 'device_type' in:
 		//     CREATE TYPE device_type AS ENUM ('foo');
 		// From pg_type.typname.
@@ -87,9 +91,10 @@ type (
 		ChildOIDs []uint32
 	}
 
-	// DomainType is a user-create domain type.
+	// DomainType is a user-created domain type.
 	DomainType struct {
 		ID         uint32   // pg_type.oid: row identifier
+		Schema     string   // pg_namespace.nspname: name of the schema
 		Name       string   // pg_type.typname: data type name
 		IsNotNull  bool     // pg_type.typnotnull: domains only, not null constraint for domains
 		HasDefault bool     // pg_type.typdefault: domains only, if there's a default value
@@ -101,8 +106,8 @@ type (
 	// a class. https://www.postgresql.org/docs/13/catalog-pg-class.html
 	CompositeType struct {
 		ID          uint32   // pg_class.oid: row identifier
-		Name        string   // pg_class.relname: name of the composite type
 		Schema      string   // pg_namespace.nspname: name of the schema
+		Name        string   // pg_class.relname: name of the composite type
 		ColumnNames []string // pg_attribute.attname: names of the column, in order
 		ColumnTypes []Type   // pg_attribute JOIN pg_type: information about columns of the composite type
 	}
@@ -113,6 +118,7 @@ type (
 	// like --go-type my_int=int.
 	UnknownType struct {
 		ID     uint32 // pg_type.oid: row identifier
+		Schema string // pg_namespace.nspname: name of the schema
 		Name   string // pg_type.typname: data type name
 		PgKind TypeKind
 	}
