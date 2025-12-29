@@ -89,7 +89,7 @@ func (e *ImportType) BaseName() string { return e.Type.BaseName() }
 func (o *OpaqueType) Import() string   { return "" }
 func (o *OpaqueType) BaseName() string { return o.Name }
 
-func (o *PointerType) Import() string   { return "" }
+func (o *PointerType) Import() string   { return o.Elem.Import() }
 func (o *PointerType) BaseName() string { return "*" + o.Elem.BaseName() }
 
 func (e *VoidType) Import() string   { return "" }
