@@ -242,7 +242,7 @@ func (p *parser) parseQuery() ast.Query {
 	var nextLeadComments ast.CommentGroup
 	for {
 		if p.tok == token.EOF || p.tok == token.Illegal {
-			p.error(p.pos, "unterminated query (no semicolon): "+string(p.src[pos:p.pos]))
+			p.error(p.pos, "unterminated query (no semicolon): "+string(p.src[queryStartPos:p.pos]))
 			return &ast.BadQuery{From: pos, To: p.pos}
 		}
 
