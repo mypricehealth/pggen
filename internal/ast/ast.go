@@ -2,6 +2,8 @@ package ast
 
 import (
 	gotok "go/token"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Node is the super-type of all AST nodes.
@@ -80,7 +82,8 @@ const (
 
 // Pragmas are options to control generated code for a single query.
 type Pragmas struct {
-	ProtobufType string // package qualified protocol buffer message type to use for output rows
+	ProtobufType string             // package qualified protocol buffer message type to use for output rows
+	ExecMode     *pgx.QueryExecMode // The execution mode for this query.
 }
 
 // An query is represented by one of the following query nodes.

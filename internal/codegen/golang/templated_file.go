@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/mypricehealth/pggen/internal/ast"
 	"github.com/mypricehealth/pggen/internal/codegen/golang/gotype"
 	"github.com/mypricehealth/pggen/internal/pginfer"
@@ -35,15 +36,16 @@ type TemplatedFile struct {
 // TemplatedQuery is a query with all information required to execute the
 // codegen template.
 type TemplatedQuery struct {
-	Name             string            // name of the query, from the comment preceding the query
-	SQLVarName       string            // name of the string variable containing the SQL
-	ResultKind       ast.ResultKind    // kind of result: :one, :many, or :exec
-	Doc              string            // doc from the source query file, formatted for Go
-	PreparedSQL      string            // SQL query, ready to run with PREPARE statement
-	Inputs           []TemplatedParam  // input parameters to the query
-	Outputs          []TemplatedColumn // non-void output columns of the query
-	ScanCols         []TemplatedColumn // all columns of the query, including void columns
-	InlineParamCount int               // inclusive count of params that will be inlined
+	Name             string             // name of the query, from the comment preceding the query
+	SQLVarName       string             // name of the string variable containing the SQL
+	ResultKind       ast.ResultKind     // kind of result: :one, :many, or :exec
+	Doc              string             // doc from the source query file, formatted for Go
+	PreparedSQL      string             // SQL query, ready to run with PREPARE statement
+	Inputs           []TemplatedParam   // input parameters to the query
+	Outputs          []TemplatedColumn  // non-void output columns of the query
+	ScanCols         []TemplatedColumn  // all columns of the query, including void columns
+	InlineParamCount int                // inclusive count of params that will be inlined
+	ExecMode         *pgx.QueryExecMode // the exec mode of this query
 }
 
 type TemplatedParam struct {
@@ -178,6 +180,27 @@ func (tq TemplatedQuery) EmitParamStruct() string {
 	}
 	sb.WriteString("}")
 	return sb.String()
+}
+
+func (tq TemplatedQuery) EmitQueryExecMode() string {
+	if tq.ExecMode == nil {
+		return ""
+	}
+
+	switch *tq.ExecMode {
+	case pgx.QueryExecModeCacheStatement:
+		return ", pgx.QueryExecModeCacheStatement"
+	case pgx.QueryExecModeCacheDescribe:
+		return ", pgx.QueryExecModeCacheDescribe"
+	case pgx.QueryExecModeDescribeExec:
+		return ", pgx.QueryExecModeDescribeExec"
+	case pgx.QueryExecModeExec:
+		return ", pgx.QueryExecModeExec"
+	case pgx.QueryExecModeSimpleProtocol:
+		return ", pgx.QueryExecModeSimpleProtocol"
+	default:
+		panic(fmt.Errorf("unexpected exec_mode %q", *tq.ExecMode))
+	}
 }
 
 // EmitParamNames emits the TemplatedQuery.Inputs into comma separated names

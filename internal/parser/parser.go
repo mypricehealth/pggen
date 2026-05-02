@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/mypricehealth/pggen/internal/ast"
 	"github.com/mypricehealth/pggen/internal/scanner"
 	"github.com/mypricehealth/pggen/internal/token"
@@ -375,6 +376,13 @@ func parsePragmas(allPragmas string) (ast.Pragmas, error) {
 				return ast.Pragmas{}, err
 			}
 			qp.ProtobufType = p
+		case "exec-mode":
+			m, err := parseExecQueryMode(val)
+			if err != nil {
+				return ast.Pragmas{}, err
+			}
+
+			qp.ExecMode = &m
 		default:
 			return ast.Pragmas{}, fmt.Errorf("unsupported pramga %q", key)
 		}
@@ -405,6 +413,23 @@ func validateProtoMsgType(val string) (string, error) {
 		}
 	}
 	return val, nil
+}
+
+func parseExecQueryMode(val string) (pgx.QueryExecMode, error) {
+	switch val {
+	case "cache_statement":
+		return pgx.QueryExecModeCacheStatement, nil
+	case "cache_describe":
+		return pgx.QueryExecModeCacheDescribe, nil
+	case "describe_exec":
+		return pgx.QueryExecModeDescribeExec, nil
+	case "exec":
+		return pgx.QueryExecModeExec, nil
+	case "simple":
+		return pgx.QueryExecModeSimpleProtocol, nil
+	default:
+		return 0, fmt.Errorf(`invalid query_mode %q, expected one of "cache_statement", "cache_describe", "describe_exec", "exec", or "simple"`, val)
+	}
 }
 
 // argData is the information of expression like pggen.arg('foo').

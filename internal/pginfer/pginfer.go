@@ -39,6 +39,8 @@ type TypedQuery struct {
 	// Qualified protocol buffer message type to use for each output row, like
 	// "erp.api.Product". If empty, generate our own Row type.
 	ProtobufType string
+	// The exec mode of this query
+	ExecMode *pgx.QueryExecMode
 }
 
 // InputParam is an input parameter for a prepared query.
@@ -123,6 +125,7 @@ func (inf *Inferrer) InferTypes(query *ast.SourceQuery) (TypedQuery, error) {
 		Inputs:            inputs,
 		Outputs:           outputs,
 		ProtobufType:      query.Pragmas.ProtobufType,
+		ExecMode:          query.Pragmas.ExecMode,
 	}, nil
 }
 
