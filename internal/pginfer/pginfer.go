@@ -140,6 +140,11 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 
+	_, err = tx.Exec(ctx, "SELECT set_config('pggen.is_running', 'TRUE', TRUE);")
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not set pggen.is_running: %w", err)
+	}
+
 	needsOutputPlan := query.ResultKind == ast.ResultKindMany || query.ResultKind == ast.ResultKindOne || query.ResultKind == ast.ResultKindRows
 
 	statementsData, err := inf.getStatementsData(ctx, query, needsOutputPlan)
