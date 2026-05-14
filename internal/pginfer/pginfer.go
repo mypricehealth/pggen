@@ -39,6 +39,8 @@ type TypedQuery struct {
 	// Qualified protocol buffer message type to use for each output row, like
 	// "erp.api.Product". If empty, generate our own Row type.
 	ProtobufType string
+	// The exec mode of this query
+	ExecMode *pgx.QueryExecMode
 }
 
 // InputParam is an input parameter for a prepared query.
@@ -123,6 +125,7 @@ func (inf *Inferrer) InferTypes(query *ast.SourceQuery) (TypedQuery, error) {
 		Inputs:            inputs,
 		Outputs:           outputs,
 		ProtobufType:      query.Pragmas.ProtobufType,
+		ExecMode:          query.Pragmas.ExecMode,
 	}, nil
 }
 
@@ -136,6 +139,11 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 		return nil, nil, fmt.Errorf("begin transaction failure: %w", err)
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
+
+	_, err = tx.Exec(ctx, "SELECT set_config('pggen.is_running', 'TRUE', TRUE);")
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not set pggen.is_running: %w", err)
+	}
 
 	needsOutputPlan := query.ResultKind == ast.ResultKindMany || query.ResultKind == ast.ResultKindOne || query.ResultKind == ast.ResultKindRows
 
