@@ -132,8 +132,9 @@ func addTypeToRegister(sb *strings.Builder, typ pg.Type) {
 		schema = v.Schema
 		name = v.Name
 	case pg.DomainType:
-		schema = v.Schema
-		name = v.Name
+		// The domain itself doesn't need to be registered as a type alias suffices.
+		addTypeToRegister(sb, v.Elem)
+		return
 	case pg.CompositeType:
 		schema = v.Schema
 		name = v.Name

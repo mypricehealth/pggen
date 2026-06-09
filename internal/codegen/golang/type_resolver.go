@@ -85,6 +85,13 @@ func (tr TypeResolver) innerResolve(pgt pg.Type, nullable bool, pkgPath string, 
 			return typ, nil
 		case *gotype.VoidType:
 			return &gotype.VoidType{}, nil
+		case *gotype.DomainType:
+			domainTyp, ok := pgt.(pg.DomainType)
+			if !ok {
+				return nil, fmt.Errorf("resolve known type %q does not have pg domain type %q", typ, pgt)
+			}
+			typ.PgDomain = domainTyp
+			return typ, nil
 		default:
 			return nil, fmt.Errorf("resolve unhandled known postgres type %T", typ)
 		}
@@ -107,6 +114,13 @@ func (tr TypeResolver) innerResolve(pgt pg.Type, nullable bool, pkgPath string, 
 			return nil, fmt.Errorf("create composite type: %w", err)
 		}
 		return comp, nil
+	case pg.DomainType:
+		elem, err := tr.Resolve(pgt.Elem, !pgt.IsNotNull, pkgPath, isOutput)
+		if err != nil {
+			return nil, fmt.Errorf("resolve base type for domain type %q: %w", pgt.Name, err)
+		}
+
+		return gotype.NewDomainType(pgt, elem, tr.caser), nil
 	}
 
 	return nil, fmt.Errorf("no go type found for Postgres type %s oid=%d", pgt.String(), pgt.OID())
@@ -116,6 +130,11 @@ func makeNullable(opaque gotype.Type) gotype.Type {
 	switch v := opaque.(type) {
 	// Already nullable
 	case *gotype.PointerType, *gotype.ArrayType:
+		return v
+	case *gotype.DomainType:
+		if v.PgDomain.IsNotNull {
+			return &gotype.PointerType{Elem: opaque}
+		}
 		return v
 	default:
 		// Needs to be made nullable

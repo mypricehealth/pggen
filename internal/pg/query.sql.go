@@ -16,6 +16,8 @@ type QueryName struct{}
 
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
+	FindDomainTypes(ctx context.Context, oids []uint32) ([]FindDomainTypesRow, error)
+
 	FindEnumTypes(ctx context.Context, oids []uint32) ([]FindEnumTypesRow, error)
 
 	FindArrayTypes(ctx context.Context, oids []uint32) ([]FindArrayTypesRow, error)
@@ -34,6 +36,8 @@ type Querier interface {
 	FindOIDName(ctx context.Context, oid uint32) (string, error)
 
 	FindOIDNames(ctx context.Context, oid []uint32) ([]FindOIDNamesRow, error)
+
+	QueueFindDomainTypes(batch Batcher, oids []uint32) *QueuedFindDomainTypes
 
 	QueueFindEnumTypes(batch Batcher, oids []uint32) *QueuedFindEnumTypes
 
@@ -131,6 +135,91 @@ var typesToRegister = []string{}
 func addTypeToRegister(typ string) struct{} {
 	typesToRegister = append(typesToRegister, typ)
 	return struct{}{}
+}
+
+const findDomainTypesSQL = `SELECT
+  typ.oid                      AS oid,
+  nsp.nspname::text            AS namespace_name,
+  typ.typname                  AS type_name,
+  typ.typnotnull               AS not_null,
+  COALESCE(typ.typdefault, '') AS default,
+  typ.typbasetype              AS base_type,
+  typ.typndims                 AS dimensions
+FROM pg_type typ
+  JOIN pg_namespace nsp ON typ.typnamespace = nsp.oid
+WHERE typ.typisdefined
+  AND typ.typtype = 'd'
+  AND typ.oid = ANY ($1::oid[]);`
+
+type FindDomainTypesRow struct {
+	OID           uint32 `json:"oid"`
+	NamespaceName string `json:"namespace_name"`
+	TypeName      string `json:"type_name"`
+	NotNull       *bool  `json:"not_null"`
+	Default       string `json:"default"`
+	BaseType      uint32 `json:"base_type"`
+	Dimensions    *int32 `json:"dimensions"`
+}
+
+// FindDomainTypes implements Querier.FindDomainTypes.
+func (q *DBQuerier) FindDomainTypes(ctx context.Context, oids []uint32) ([]FindDomainTypesRow, error) {
+	ctx = context.WithValue(ctx, QueryName{}, "FindDomainTypes")
+	rows, err := q.conn.Query(ctx, findDomainTypesSQL, oids)
+	if err != nil {
+		return nil, fmt.Errorf("query FindDomainTypes: %w", q.errWrap(err))
+	}
+	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindDomainTypesRow])
+	return res, q.errWrap(err)
+}
+
+type QueuedFindDomainTypes struct {
+	wrapError func(err error) error
+	onResult  func([]FindDomainTypesRow) error
+}
+
+func (q *QueuedFindDomainTypes) WrapError(wrapError func(err error) error) {
+	q.wrapError = wrapError
+}
+
+func (q *QueuedFindDomainTypes) OnResult(onResult func([]FindDomainTypesRow) error) {
+	q.onResult = onResult
+}
+
+func (q *QueuedFindDomainTypes) runWrapError(err error) error {
+	if q.wrapError == nil {
+		return err
+	}
+
+	return q.wrapError(err)
+}
+
+func (q *QueuedFindDomainTypes) runOnResult(result []FindDomainTypesRow) error {
+	if q.onResult == nil {
+		return nil
+	}
+
+	return q.onResult(result)
+}
+
+// QueueFindDomainTypes implements Querier.QueueFindDomainTypes.
+func (q *DBQuerier) QueueFindDomainTypes(batch Batcher, oids []uint32) *QueuedFindDomainTypes {
+	queued := &QueuedFindDomainTypes{}
+
+	queuedQuery := batch.Queue(findDomainTypesSQL, oids)
+	queuedQuery.Fn = func(br pgx.BatchResults) error {
+		rows, err := br.Query()
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+		res, err := pgx.CollectRows(rows, pgx.RowToStructByName[FindDomainTypesRow])
+		if err != nil {
+			return queued.runWrapError(err)
+		}
+
+		return queued.runOnResult(res)
+	}
+
+	return queued
 }
 
 const findEnumTypesSQL = `WITH enums AS (
@@ -485,6 +574,12 @@ const findDescendantOIDsSQL = `WITH RECURSIVE oid_descs(oid) AS (
     FROM pg_type arr_typ
       JOIN pg_type elem_typ ON arr_typ.typelem = elem_typ.oid
       JOIN all_oids od ON arr_typ.oid = od.oid
+    UNION
+    -- All domain base types.
+    SELECT domain_typ.typbasetype
+    FROM pg_type domain_typ
+      JOIN all_oids od ON domain_typ.oid = od.oid
+    WHERE domain_typ.typtype = 'd'
   ) t
 )
 SELECT oid

@@ -135,11 +135,13 @@ func findOutputDeclsHelper(typ gotype.Type, decls DeclarerSet, hadCompositeParen
 		}
 		decls.AddAll(NewTypeResolverDeclarer())
 		switch gotype.UnwrapNestedType(typ.Elem).(type) {
-		case *gotype.CompositeType, *gotype.EnumType:
+		case *gotype.CompositeType, *gotype.EnumType, *gotype.DomainType:
 			decls.AddAll(NewArrayDecoderDeclarer(typ))
 		}
 		findOutputDeclsHelper(typ.Elem, decls, hadCompositeParent)
-
+	case *gotype.DomainType:
+		decls.AddAll(NewDomainTypeDeclarer(typ), NewTypeResolverDeclarer())
+		findOutputDeclsHelper(typ.Elem, decls, hadCompositeParent)
 	default:
 		return
 	}

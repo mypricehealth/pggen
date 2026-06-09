@@ -1,3 +1,18 @@
+-- name: FindDomainTypes :many
+SELECT
+  typ.oid                      AS oid,
+  nsp.nspname::text            AS namespace_name,
+  typ.typname                  AS type_name,
+  typ.typnotnull               AS not_null,
+  COALESCE(typ.typdefault, '') AS default,
+  typ.typbasetype              AS base_type,
+  typ.typndims                 AS dimensions
+FROM pg_type typ
+  JOIN pg_namespace nsp ON typ.typnamespace = nsp.oid
+WHERE typ.typisdefined
+  AND typ.typtype = 'd'
+  AND typ.oid = ANY (pggen.arg('OIDs')::oid[]);
+
 -- name: FindEnumTypes :many
 WITH enums AS (
   SELECT
@@ -143,6 +158,12 @@ WITH RECURSIVE oid_descs(oid) AS (
     FROM pg_type arr_typ
       JOIN pg_type elem_typ ON arr_typ.typelem = elem_typ.oid
       JOIN all_oids od ON arr_typ.oid = od.oid
+    UNION
+    -- All domain base types.
+    SELECT domain_typ.typbasetype
+    FROM pg_type domain_typ
+      JOIN all_oids od ON domain_typ.oid = od.oid
+    WHERE domain_typ.typtype = 'd'
   ) t
 )
 SELECT oid

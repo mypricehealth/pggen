@@ -70,6 +70,16 @@ func (tf *TypeFetcher) FindTypesByOIDs(oids ...uint32) (map[uint32]Type, error) 
 		delete(uncached, comp.ID)
 	}
 
+	domains, err := tf.findDomainTypes(ctx, uncached)
+	if err != nil {
+		return nil, fmt.Errorf("find domain types: %w", err)
+	}
+	for _, domain := range domains {
+		types[domain.ID] = domain
+		tf.cache.addType(domain)
+		delete(uncached, domain.ID)
+	}
+
 	arrs, err := tf.findArrayTypes(ctx, uncached)
 	if err != nil {
 		return nil, fmt.Errorf("find array types: %w", err)
@@ -97,6 +107,31 @@ func (tf *TypeFetcher) FindTypesByOIDs(oids ...uint32) (map[uint32]Type, error) 
 
 	if len(uncached) > 0 {
 		return nil, fmt.Errorf("had %d unclassified types: %v", len(uncached), uncached)
+	}
+	return types, nil
+}
+
+func (tf *TypeFetcher) findDomainTypes(ctx context.Context, uncached map[uint32]struct{}) ([]DomainType, error) {
+	oids := oidKeys(uncached)
+	rows, err := tf.querier.FindDomainTypes(ctx, oids)
+	if err != nil {
+		return nil, fmt.Errorf("find enum oid types: %w", err)
+	}
+	types := make([]DomainType, len(rows))
+	for i, domain := range rows {
+		baseType, ok := tf.cache.getOID(uint32(domain.BaseType))
+		if !ok {
+			baseType = placeholderType{ID: uint32(domain.BaseType)}
+		}
+		types[i] = DomainType{
+			ID:         domain.OID,
+			Schema:     domain.NamespaceName,
+			Name:       domain.TypeName,
+			IsNotNull:  *domain.NotNull,
+			HasDefault: domain.Default != "",
+			Elem:       baseType,
+			Dimensions: domain.Dimensions,
+		}
 	}
 	return types, nil
 }
@@ -228,6 +263,13 @@ func (tf *TypeFetcher) resolvePlaceholderTypes(knownTypes map[uint32]Type) error
 			}
 			return typ, nil
 		case ArrayType:
+			newType, err := resolveType(typ.Elem)
+			if err != nil {
+				return nil, fmt.Errorf("array %q elem: %w", typ.Name, err)
+			}
+			typ.Elem = newType
+			return typ, nil
+		case DomainType:
 			newType, err := resolveType(typ.Elem)
 			if err != nil {
 				return nil, fmt.Errorf("array %q elem: %w", typ.Name, err)
