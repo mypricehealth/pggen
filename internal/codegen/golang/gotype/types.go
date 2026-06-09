@@ -37,6 +37,13 @@ type (
 		FieldTypes  []Type
 	}
 
+	// DomainType is a struct type that represents a Postgres domain type.
+	DomainType struct {
+		PgDomain pg.DomainType
+		Name     string // Go-style type name in UpperCamelCase
+		Elem     Type
+	}
+
 	// EnumType is a string type with constant values that maps to the labels of
 	// a Postgres enum.
 	EnumType struct {
@@ -80,6 +87,9 @@ func (a *ArrayType) BaseName() string { return "[]" + a.Elem.BaseName() }
 func (c *CompositeType) Import() string   { return "" }
 func (c *CompositeType) BaseName() string { return c.Name }
 
+func (c *DomainType) Import() string   { return c.Elem.Import() }
+func (c *DomainType) BaseName() string { return c.Name }
+
 func (e *EnumType) Import() string   { return "" }
 func (e *EnumType) BaseName() string { return e.Name }
 
@@ -101,6 +111,8 @@ func getTypePackage(typ Type) string {
 		return getTypePackage(typ.Elem)
 	case *CompositeType:
 		return ""
+	case *DomainType:
+		return getTypePackage(typ.Elem)
 	case *EnumType:
 		return ""
 	case *ImportType:
@@ -184,6 +196,19 @@ func NewEnumType(pkgPath string, pgEnum pg.EnumType, caser casing.Caser) Type {
 		}
 	}
 	return typ
+}
+
+func NewDomainType(pgDomain pg.DomainType, elemType Type, caser casing.Caser) Type {
+	name := caser.ToUpperGoIdent(pgDomain.Name)
+	if name == "" {
+		name = ChooseFallbackName(pgDomain.Name, "UnnamedDomain")
+	}
+
+	return &DomainType{
+		Name:     name,
+		PgDomain: pgDomain,
+		Elem:     elemType,
+	}
 }
 
 func makeUnique(labels []string) []string {
@@ -315,8 +340,7 @@ func ChooseFallbackName(pgName string, prefix string) string {
 	return sb.String()
 }
 
-// UnwrapNestedType returns the first type under gotype.ImportType or
-// gotype.PointerType.
+// UnwrapNestedType returns the first type under gotype.ImportType, gotype.PointerType, or gotype.DomainType.
 func UnwrapNestedType(typ Type) Type {
 	switch typ := typ.(type) {
 	case *ImportType:

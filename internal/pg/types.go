@@ -93,13 +93,14 @@ type (
 
 	// DomainType is a user-created domain type.
 	DomainType struct {
-		ID         uint32   // pg_type.oid: row identifier
-		Schema     string   // pg_namespace.nspname: name of the schema
-		Name       string   // pg_type.typname: data type name
-		IsNotNull  bool     // pg_type.typnotnull: domains only, not null constraint for domains
-		HasDefault bool     // pg_type.typdefault: domains only, if there's a default value
-		BaseType   BaseType // pg_type.typbasetype: domains only, the base type
-		Dimensions int      // pg_type.typndims: domains on array type only, 0 otherwise, number of array dimensions
+		ID         uint32 // pg_type.oid: row identifier
+		Schema     string // pg_namespace.nspname: name of the schema
+		Name       string // pg_type.typname: data type name
+		IsNotNull  bool   // pg_type.typnotnull: domains only, not null constraint for domains
+		HasDefault bool   // pg_type.typdefault: domains only, if there's a default value
+
+		Elem       Type   // pg_type.typbasetype: domains only, the base type
+		Dimensions *int32 // pg_type.typndims: domains on array type only, 0 otherwise, number of array dimensions
 	}
 
 	// CompositeType is a type containing multiple columns and is represented as
