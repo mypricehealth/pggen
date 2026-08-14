@@ -57,11 +57,12 @@ type TemplatedParam struct {
 }
 
 type TemplatedColumn struct {
-	PgName    string // original name of the Postgres column
+	PgName    string // name of the Postgres column, the nullable '?' marker will be removed.
 	UpperName string // name in Go-style (UpperCamelCase) to use for the column
 	LowerName string // name in Go-style (lowerCamelCase)
 	Type      gotype.Type
 	QualType  string // package qualified Go type to use for the column, like "pgtype.Text"
+	Nullable  bool   // whether the column was marked nullable with a trailing '?'
 }
 
 func (tf TemplatedFile) needsPgconnImport() bool {
@@ -567,6 +568,12 @@ func (tq TemplatedQuery) EmitRowStruct() string {
 			sb.WriteString(strings.Repeat(" ", maxTypeLen-len(out.QualType)))
 			sb.WriteString("`json:")
 			sb.WriteString(strconv.Quote(out.PgName))
+			// A nullable column's reported name keeps its '?' marker, so bind it
+			// explicitly; pgx matches a db tag exactly (no snake-case folding).
+			if out.Nullable {
+				sb.WriteString(" db:")
+				sb.WriteString(strconv.Quote(out.PgName + "?"))
+			}
 			sb.WriteString("`")
 			sb.WriteRune('\n')
 		}

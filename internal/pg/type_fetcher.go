@@ -180,6 +180,8 @@ func (tf *TypeFetcher) findCompositeTypes(ctx context.Context, uncached map[uint
 
 		colTypes := make([]Type, len(row.ColOIDs))
 		colNames := make([]string, len(row.ColOIDs))
+		colNotNulls := make([]bool, len(row.ColOIDs))
+		copy(colNotNulls, row.ColNotNulls)
 		// Build each column of the composite type.
 		for i, colOID := range row.ColOIDs {
 			if colType, ok := tf.cache.getOID(uint32(colOID)); ok {
@@ -194,11 +196,12 @@ func (tf *TypeFetcher) findCompositeTypes(ctx context.Context, uncached map[uint
 			}
 		}
 		typ := CompositeType{
-			ID:          row.TableTypeOID,
-			Schema:      row.TableNamespaceName,
-			Name:        row.TableName,
-			ColumnNames: colNames,
-			ColumnTypes: colTypes,
+			ID:             row.TableTypeOID,
+			Schema:         row.TableNamespaceName,
+			Name:           row.TableName,
+			ColumnNames:    colNames,
+			ColumnTypes:    colTypes,
+			ColumnNotNulls: colNotNulls,
 		}
 		tf.cache.addType(typ)
 		types = append(types, typ)
