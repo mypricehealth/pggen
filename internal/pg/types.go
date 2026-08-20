@@ -106,11 +106,12 @@ type (
 	// CompositeType is a type containing multiple columns and is represented as
 	// a class. https://www.postgresql.org/docs/13/catalog-pg-class.html
 	CompositeType struct {
-		ID          uint32   // pg_class.oid: row identifier
-		Schema      string   // pg_namespace.nspname: name of the schema
-		Name        string   // pg_class.relname: name of the composite type
-		ColumnNames []string // pg_attribute.attname: names of the column, in order
-		ColumnTypes []Type   // pg_attribute JOIN pg_type: information about columns of the composite type
+		ID             uint32   // pg_class.oid: row identifier
+		Schema         string   // pg_namespace.nspname: name of the schema
+		Name           string   // pg_class.relname: name of the composite type
+		ColumnNames    []string // pg_attribute.attname: names of the column, in order
+		ColumnTypes    []Type   // pg_attribute JOIN pg_type: information about columns of the composite type
+		ColumnNotNulls []bool   // pg_attribute.attnotnull, in order. Only for a table as CREATE TYPE doesn't allow for this.
 	}
 
 	// UnknownType is a Postgres type that's not a well-known type in

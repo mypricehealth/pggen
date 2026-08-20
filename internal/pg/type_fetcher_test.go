@@ -15,9 +15,10 @@ import (
 
 func TestNewTypeFetcher(t *testing.T) {
 	productImageType := CompositeType{
-		Name:        "product_image_type",
-		ColumnNames: []string{"pixel_width", "pixel_height"},
-		ColumnTypes: []Type{Int4, Int4},
+		Name:           "product_image_type",
+		ColumnNames:    []string{"pixel_width", "pixel_height"},
+		ColumnTypes:    []Type{Int4, Int4},
+		ColumnNotNulls: []bool{false, false},
 	}
 	productImageArrayType := ArrayType{
 		Name: "_product_image_type",
@@ -88,10 +89,11 @@ func TestNewTypeFetcher(t *testing.T) {
 			wants: []Type{
 				Int8,
 				CompositeType{
-					ID:          0, // set in test
-					Name:        "qux",
-					ColumnNames: []string{"id", "foo"},
-					ColumnTypes: []Type{Text, Int8},
+					ID:             0, // set in test
+					Name:           "qux",
+					ColumnNames:    []string{"id", "foo"},
+					ColumnTypes:    []Type{Text, Int8},
+					ColumnNotNulls: []bool{false, false},
 				},
 				Text,
 			},
@@ -105,20 +107,23 @@ func TestNewTypeFetcher(t *testing.T) {
 			fetchOID: "qux",
 			wants: []Type{
 				CompositeType{
-					ID:          0, // ignored
-					Name:        "inventory_item",
-					ColumnNames: []string{"name"},
-					ColumnTypes: []Type{Text},
+					ID:             0, // ignored
+					Name:           "inventory_item",
+					ColumnNames:    []string{"name"},
+					ColumnTypes:    []Type{Text},
+					ColumnNotNulls: []bool{false},
 				},
 				CompositeType{
-					ID:          0, // set in test
-					Name:        "qux",
-					ColumnNames: []string{"item", "foo"},
+					ID:             0, // set in test
+					Name:           "qux",
+					ColumnNotNulls: []bool{false, false},
+					ColumnNames:    []string{"item", "foo"},
 					ColumnTypes: []Type{
 						CompositeType{
-							Name:        "inventory_item",
-							ColumnNames: []string{"name"},
-							ColumnTypes: []Type{Text},
+							Name:           "inventory_item",
+							ColumnNames:    []string{"name"},
+							ColumnTypes:    []Type{Text},
+							ColumnNotNulls: []bool{false},
 						},
 						Int8,
 					},
@@ -133,9 +138,10 @@ func TestNewTypeFetcher(t *testing.T) {
 			wants: []Type{
 				Int4,
 				CompositeType{
-					Name:        "product_image_set_type",
-					ColumnNames: []string{"name", "images"},
-					ColumnTypes: []Type{Text, productImageArrayType}},
+					Name:           "product_image_set_type",
+					ColumnNames:    []string{"name", "images"},
+					ColumnTypes:    []Type{Text, productImageArrayType},
+					ColumnNotNulls: []bool{false, false}},
 				productImageType,
 				productImageArrayType,
 				Text,
@@ -276,4 +282,46 @@ func sortTypes(types []Type) {
 	sort.Slice(types, func(i, j int) bool {
 		return types[i].String() < types[j].String()
 	})
+}
+
+func TestTypeFetcher_CompositeColumnNotNulls(t *testing.T) {
+	tests := []struct {
+		name     string
+		schema   string
+		fetchOID string
+		want     []bool
+	}{
+		{
+			name:     "table row type carries its column constraints",
+			schema:   `CREATE TABLE appointment (id bigint NOT NULL, label text NOT NULL, note text);`,
+			fetchOID: "appointment",
+			want:     []bool{true, true, false},
+		},
+		{
+			name:     "create type cannot constrain its attributes",
+			schema:   `CREATE TYPE time_of_day_type AS (hour int, minute int);`,
+			fetchOID: "time_of_day_type",
+			want:     []bool{false, false},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn, cleanup := pgtest.NewPostgresSchemaString(t, tt.schema)
+			defer cleanup()
+
+			ctx := context.Background()
+			querier, err := NewQuerier(ctx, conn)
+			require.NoError(t, err)
+			fetcher, err := NewTypeFetcher(ctx, conn)
+			require.NoError(t, err)
+
+			oid := findOIDVal(t, tt.fetchOID, querier)
+			types, err := fetcher.FindTypesByOIDs(oid)
+			require.NoError(t, err)
+
+			composite, ok := types[oid].(CompositeType)
+			require.True(t, ok, "oid %d should resolve to a composite type", oid)
+			require.Equal(t, tt.want, composite.ColumnNotNulls)
+		})
+	}
 }

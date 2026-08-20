@@ -57,6 +57,9 @@ func (p InputParam) IsEmpty() bool {
 	return p.PgName == "" && p.PgType == nil && !p.IsOptional
 }
 
+// unaliasedColumn is the name Postgres reports for a column with no alias, like "SELECT 1".
+const unaliasedColumn = "?column?"
+
 // OutputColumn is a single column output from a select query or returning
 // clause in an update, insert, or delete query.
 type OutputColumn struct {
@@ -64,9 +67,8 @@ type OutputColumn struct {
 	PgName string
 	// The postgres type of the column as reported by Postgres.
 	PgType pg.Type
-	// If the type can be null; depends on the query. A column defined
-	// with a NOT NULL constraint can still be null in the output with a left
-	// join. Nullability is determined using rudimentary control-flow analysis.
+	// If the type can be null, marked by a trailing ? in the output alias, like
+	// "SELECT suffix AS "suffix?". Columns are non-nullable unless marked.
 	Nullable bool
 }
 
@@ -140,14 +142,12 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 
-	_, err = tx.Exec(ctx, "SELECT set_config('pggen.is_running', 'TRUE', TRUE);")
+	_, err = tx.Exec(ctx, "SELECT set_config('analysis.is_running', 'TRUE', TRUE);")
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not set pggen.is_running: %w", err)
+		return nil, nil, fmt.Errorf("could not set analysis.is_running: %w", err)
 	}
 
-	needsOutputPlan := query.ResultKind == ast.ResultKindMany || query.ResultKind == ast.ResultKindOne || query.ResultKind == ast.ResultKindRows
-
-	statementsData, err := inf.getStatementsData(ctx, query, needsOutputPlan)
+	statementsData, err := inf.getStatementsData(ctx, query)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get statement data: %w", err)
 	}
@@ -176,22 +176,22 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 			return nil, nil, fmt.Errorf("fetch oid types: %w", err)
 		}
 
-		// Output nullability.
-		nullables, err := inf.inferOutputNullability(query, finalStatement.Fields, statementsData.outputPlan)
-		if err != nil {
-			return nil, nil, fmt.Errorf("infer output type nullability: %w", err)
-		}
-
-		// Create output columns
-		for i, desc := range finalStatement.Fields {
+		for _, desc := range finalStatement.Fields {
 			pgType, ok := outputTypes[uint32(desc.DataTypeOID)]
 			if !ok {
 				return nil, nil, fmt.Errorf("no postgrestype name found for column %s with oid %d", string(desc.Name), desc.DataTypeOID)
 			}
+			name := string(desc.Name)
+			// Postgres reports every unaliased expression column as ?column?. The trailing ? would
+			// otherwise read as the nullability marker.
+			nullable := name != unaliasedColumn && strings.HasSuffix(name, "?")
+			if nullable {
+				name = strings.TrimSuffix(name, "?")
+			}
 			outputColumns = append(outputColumns, OutputColumn{
-				PgName:   string(desc.Name),
+				PgName:   name,
 				PgType:   pgType,
-				Nullable: nullables[i],
+				Nullable: nullable,
 			})
 		}
 	}
@@ -201,13 +201,11 @@ func (inf *Inferrer) prepareTypes(query *ast.SourceQuery) (_a []InputParam, _ []
 
 type statementsData struct {
 	inputStatements []*pgconn.StatementDescription
-	outputPlan      Plan
 }
 
-func (inf *Inferrer) getStatementsData(ctx context.Context, query *ast.SourceQuery, needsOutputPlan bool) (statementsData, error) {
+func (inf *Inferrer) getStatementsData(ctx context.Context, query *ast.SourceQuery) (statementsData, error) {
 	// The final statement description is used for the output, if any.
 	inputStatements := make([]*pgconn.StatementDescription, 0, len(query.ContiguousArgsSQL))
-	var outputPlan Plan
 
 	for i, sql := range query.ContiguousArgsSQL {
 		stmtDesc, err := inf.prepareQuery(ctx, sql.SQL, query.ResultKind)
@@ -225,39 +223,18 @@ func (inf *Inferrer) getStatementsData(ctx context.Context, query *ast.SourceQue
 		}
 
 		inputStatements = append(inputStatements, stmtDesc)
-
-		shouldExecute := true
-
 		isLastStatement := i == len(query.ContiguousArgsSQL)-1
 
 		// If this is the last statement, there's no need to actually execute it.
-		if isLastStatement {
-			shouldExecute = false
-		}
-
-		if isLastStatement {
-			if needsOutputPlan {
-				plan, err := inf.explainQuery(sql.SQL, len(sql.Args))
-				if err != nil {
-					return statementsData{}, fmt.Errorf("could not explain query: %w", err)
-				}
-
-				outputPlan = plan
-			}
-		}
-
-		if shouldExecute {
+		if !isLastStatement {
 			err := inf.execute(ctx, stmtDesc, sql)
 			if err != nil {
 				return statementsData{}, fmt.Errorf("could not execute query: %w", err)
 			}
 		}
-
 	}
 
-	data := statementsData{inputStatements, outputPlan}
-
-	return data, nil
+	return statementsData{inputStatements}, nil
 }
 
 // Executes the query so that side effects that the next query may depend on are applied.
@@ -414,53 +391,6 @@ func (inf *Inferrer) getInputParamTypes(statements []*pgconn.StatementDescriptio
 	}
 
 	return paramTypes, nil
-}
-
-// inferOutputNullability infers which of the output columns produced by the
-// query and described by descs can be null.
-func (inf *Inferrer) inferOutputNullability(query *ast.SourceQuery, descs []pgconn.FieldDescription, outputPlan Plan) ([]bool, error) {
-	if len(descs) == 0 {
-		return nil, nil
-	}
-
-	columnKeys := make([]pg.ColumnKey, len(descs))
-	for i, desc := range descs {
-		if desc.TableOID > 0 {
-			columnKeys[i] = pg.ColumnKey{
-				TableOID: uint32(desc.TableOID),
-				Number:   desc.TableAttributeNumber,
-			}
-		}
-	}
-	cols, err := pg.FetchColumns(inf.conn, columnKeys)
-	if err != nil {
-		return nil, fmt.Errorf("fetch column for nullability: %w", err)
-	}
-
-	// The nth entry determines if the output column described by descs[n] is
-	// nullable. plan.Outputs might contain more entries than cols because the
-	// plan output also contains information like sort columns.
-	nullables := make([]bool, len(descs))
-	for i := range nullables {
-		nullables[i] = true // assume nullable until proven otherwise
-	}
-	for i, col := range cols {
-		if i == len(outputPlan.Outputs) {
-			// plan.Outputs might not have the same output because the top level node
-			// joins child outputs like with append.
-			break
-		}
-		nullables[i] = isColNullable(query, outputPlan, outputPlan.Outputs[i], col)
-	}
-	return nullables, nil
-}
-
-func createParamArgs(argCount int) []interface{} {
-	args := make([]interface{}, argCount)
-	for i := range argCount {
-		args[i] = nil
-	}
-	return args
 }
 
 func extractDoc(query *ast.SourceQuery) []string {

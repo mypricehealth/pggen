@@ -17,7 +17,7 @@ type QueryName struct{}
 // Querier is a typesafe Go interface backed by SQL queries.
 type Querier interface {
 	// CountAuthors returns the number of authors (zero params).
-	CountAuthors(ctx context.Context) (*int, error)
+	CountAuthors(ctx context.Context) (int, error)
 
 	// FindAuthorById finds one (or zero) authors by ID (one param).
 	FindAuthorByID(ctx context.Context, params FindAuthorByIDParams) (FindAuthorByIDRow, error)
@@ -122,26 +122,26 @@ func addTypeToRegister(typ string) struct{} {
 const countAuthorsSQL = `SELECT count(*) FROM author;`
 
 // CountAuthors implements Querier.CountAuthors.
-func (q *DBQuerier) CountAuthors(ctx context.Context) (*int, error) {
+func (q *DBQuerier) CountAuthors(ctx context.Context) (int, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "CountAuthors")
 	rows, err := q.conn.Query(ctx, countAuthorsSQL)
 	if err != nil {
-		return nil, fmt.Errorf("query CountAuthors: %w", q.errWrap(err))
+		return 0, fmt.Errorf("query CountAuthors: %w", q.errWrap(err))
 	}
-	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
+	res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int])
 	return res, q.errWrap(err)
 }
 
 type QueuedCountAuthors struct {
 	wrapError func(err error) error
-	onResult  func(*int) error
+	onResult  func(int) error
 }
 
 func (q *QueuedCountAuthors) WrapError(wrapError func(err error) error) {
 	q.wrapError = wrapError
 }
 
-func (q *QueuedCountAuthors) OnResult(onResult func(*int) error) {
+func (q *QueuedCountAuthors) OnResult(onResult func(int) error) {
 	q.onResult = onResult
 }
 
@@ -153,7 +153,7 @@ func (q *QueuedCountAuthors) runWrapError(err error) error {
 	return q.wrapError(err)
 }
 
-func (q *QueuedCountAuthors) runOnResult(result *int) error {
+func (q *QueuedCountAuthors) runOnResult(result int) error {
 	if q.onResult == nil {
 		return nil
 	}
@@ -171,7 +171,7 @@ func (q *DBQuerier) QueueCountAuthors(batch Batcher) *QueuedCountAuthors {
 		if err != nil {
 			return queued.runWrapError(err)
 		}
-		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[*int])
+		res, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int])
 		if err != nil {
 			return queued.runWrapError(err)
 		}
@@ -182,7 +182,7 @@ func (q *DBQuerier) QueueCountAuthors(batch Batcher) *QueuedCountAuthors {
 	return queued
 }
 
-const findAuthorByIDSQL = `SELECT * FROM author WHERE author_id = $1;`
+const findAuthorByIDSQL = `SELECT author_id, first_name, last_name, suffix AS "suffix?" FROM author WHERE author_id = $1;`
 
 type FindAuthorByIDParams struct {
 	AuthorID int32 `json:"AuthorID"`
@@ -192,7 +192,7 @@ type FindAuthorByIDRow struct {
 	AuthorID  int32   `json:"author_id"`
 	FirstName string  `json:"first_name"`
 	LastName  string  `json:"last_name"`
-	Suffix    *string `json:"suffix"`
+	Suffix    *string `json:"suffix" db:"suffix?"`
 }
 
 // FindAuthorByID implements Querier.FindAuthorByID.

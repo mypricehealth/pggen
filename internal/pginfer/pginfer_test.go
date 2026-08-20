@@ -67,12 +67,27 @@ func TestInferrer_InferTypes(t *testing.T) {
 			},
 		},
 		{
+			name: "unaliased column is not a nullability marker",
+			query: &ast.SourceQuery{
+				Name:       "Unaliased",
+				ResultKind: ast.ResultKindOne,
+			},
+			contiguousArgsSQL: "SELECT 'foo'",
+			want: TypedQuery{
+				Name:       "Unaliased",
+				ResultKind: ast.ResultKindOne,
+				Outputs: []OutputColumn{
+					{PgName: "?column?", PgType: pg.Text, Nullable: false},
+				},
+			},
+		},
+		{
 			name: "union one col",
 			query: &ast.SourceQuery{
 				Name:       "UnionOneCol",
 				ResultKind: ast.ResultKindMany,
 			},
-			contiguousArgsSQL: "SELECT 1 AS num UNION SELECT 2 AS num",
+			contiguousArgsSQL: `SELECT 1 AS "num?" UNION SELECT 2 AS num`,
 			want: TypedQuery{
 				Name:       "UnionOneCol",
 				ResultKind: ast.ResultKindMany,
@@ -105,7 +120,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				ResultKind: ast.ResultKindMany,
 			},
 			contiguousArgsSQL: texts.Dedent(`
-                SELECT enum_range('phone'::device_type, 'phone'::device_type) AS device_types
+                SELECT enum_range('phone'::device_type, 'phone'::device_type) AS "device_types?"
                 UNION ALL
                 SELECT enum_range(NULL::device_type) AS device_types;
             `),
@@ -153,6 +168,36 @@ func TestInferrer_InferTypes(t *testing.T) {
 			},
 		},
 		{
+			name: "unmarked nullable column defaults to non-null",
+			query: &ast.SourceQuery{
+				Name:       "FindSuffix",
+				ResultKind: ast.ResultKindMany,
+			},
+			contiguousArgsSQL: "SELECT suffix FROM author;",
+			want: TypedQuery{
+				Name:       "FindSuffix",
+				ResultKind: ast.ResultKindMany,
+				Outputs: []OutputColumn{
+					{PgName: "suffix", PgType: pg.Text, Nullable: false},
+				},
+			},
+		},
+		{
+			name: "marked column is nullable with '?' trimmed from name",
+			query: &ast.SourceQuery{
+				Name:       "FindSuffixNullable",
+				ResultKind: ast.ResultKindMany,
+			},
+			contiguousArgsSQL: `SELECT suffix AS "suffix?" FROM author;`,
+			want: TypedQuery{
+				Name:       "FindSuffixNullable",
+				ResultKind: ast.ResultKindMany,
+				Outputs: []OutputColumn{
+					{PgName: "suffix", PgType: pg.Text, Nullable: true},
+				},
+			},
+		},
+		{
 			name: "find by first name join",
 			query: &ast.SourceQuery{
 				Name:       "FindByFirstNameJoin",
@@ -160,7 +205,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				ResultKind: ast.ResultKindMany,
 				Doc:        newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
-			contiguousArgsSQL: "SELECT a1.first_name FROM author a1 JOIN author a2 USING (author_id) WHERE a1.first_name = $1;",
+			contiguousArgsSQL: `SELECT a1.first_name AS "first_name?" FROM author a1 JOIN author a2 USING (author_id) WHERE a1.first_name = $1;`,
 			argCount:          1,
 			want: TypedQuery{
 				Name:       "FindByFirstNameJoin",
@@ -201,7 +246,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Params:     []ast.Param{{Name: "AuthorID"}},
 				ResultKind: ast.ResultKindMany,
 			},
-			contiguousArgsSQL: "DELETE FROM author WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
+			contiguousArgsSQL: `DELETE FROM author WHERE author_id = $1 RETURNING author_id, first_name, suffix AS "suffix?";`,
 			argCount:          1,
 			want: TypedQuery{
 				Name:       "DeleteAuthorByIDReturning",
@@ -223,7 +268,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				Params:     []ast.Param{{Name: "AuthorID"}},
 				ResultKind: ast.ResultKindMany,
 			},
-			contiguousArgsSQL: "UPDATE author set first_name = 'foo' WHERE author_id = $1 RETURNING author_id, first_name, suffix;",
+			contiguousArgsSQL: `UPDATE author set first_name = 'foo' WHERE author_id = $1 RETURNING author_id, first_name, suffix AS "suffix?";`,
 			argCount:          1,
 			want: TypedQuery{
 				Name:       "UpdateByAuthorIDReturning",
@@ -299,7 +344,7 @@ func TestInferrer_InferTypes(t *testing.T) {
 				ResultKind: ast.ResultKindOne,
 				Doc:        newCommentGroup("--   Hello  ", "-- name: Foo"),
 			},
-			contiguousArgsSQL: "SELECT array_agg(first_name) AS names FROM author;",
+			contiguousArgsSQL: `SELECT array_agg(first_name) AS "names?" FROM author;`,
 			want: TypedQuery{
 				Name:       "ArrayAggFirstName",
 				ResultKind: ast.ResultKindOne,
@@ -401,7 +446,7 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 			},
 			errors.New("query DeleteAuthorByIDMany has incompatible result kind :many; " +
 				"the query doesn't return any columns; " +
-				"use :exec or :setup if the query shouldn't return any columns"),
+				"use :exec, :setup, or :string if the query shouldn't return any columns"),
 		},
 		{
 			&ast.SourceQuery{
@@ -414,7 +459,7 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 			errors.New(
 				"query DeleteAuthorByIDOne has incompatible result kind :one; " +
 					"the query doesn't return any columns; " +
-					"use :exec or :setup if the query shouldn't return any columns"),
+					"use :exec, :setup, or :string if the query shouldn't return any columns"),
 		},
 		{
 			&ast.SourceQuery{
@@ -427,7 +472,7 @@ func TestInferrer_InferTypes_Error(t *testing.T) {
 			errors.New(
 				"query VoidOne has incompatible result kind :many; " +
 					"the query only has void columns; " +
-					"use :exec or :setup if the query shouldn't return any columns"),
+					"use :exec, :setup, or :string if the query shouldn't return any columns"),
 		},
 	}
 	for _, tt := range tests {

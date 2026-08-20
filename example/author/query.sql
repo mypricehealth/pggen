@@ -1,10 +1,10 @@
 -- FindAuthorById finds one (or zero) authors by ID.
 -- name: FindAuthorByID :one
-SELECT * FROM author WHERE author_id = pggen.arg('AuthorID');
+SELECT author_id, first_name, last_name, suffix AS "suffix?" FROM author WHERE author_id = pggen.arg('AuthorID');
 
 -- FindAuthors finds authors by first name.
 -- name: FindAuthors :many
-SELECT * FROM author WHERE first_name = pggen.arg('FirstName');
+SELECT author_id, first_name, last_name, suffix AS "suffix?" FROM author WHERE first_name = pggen.arg('FirstName');
 
 -- FindAuthorNames finds one (or zero) authors by ID.
 -- name: FindAuthorNames :many
@@ -41,10 +41,10 @@ RETURNING author_id;
 -- name: InsertAuthorSuffix :one
 INSERT INTO author (first_name, last_name, suffix)
 VALUES (pggen.arg('FirstName'), pggen.arg('LastName'), pggen.arg('Suffix'))
-RETURNING author_id, first_name, last_name, suffix;
+RETURNING author_id, first_name, last_name, suffix AS "suffix?";
 
 -- name: StringAggFirstName :one
-SELECT string_agg(first_name, ',') AS names FROM author WHERE author_id = pggen.arg('author_id');
+SELECT string_agg(first_name, ',') AS "names?" FROM author WHERE author_id = pggen.arg('author_id');
 
 -- name: ArrayAggFirstName :one
 SELECT array_agg(first_name) AS names FROM author WHERE author_id = pggen.arg('author_id');

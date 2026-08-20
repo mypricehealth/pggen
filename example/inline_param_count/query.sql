@@ -4,7 +4,7 @@ SELECT count(*) FROM author;
 
 -- FindAuthorById finds one (or zero) authors by ID (one param).
 -- name: FindAuthorByID :one
-SELECT * FROM author WHERE author_id = pggen.arg('AuthorID');
+SELECT author_id, first_name, last_name, suffix AS "suffix?" FROM author WHERE author_id = pggen.arg('AuthorID');
 
 -- InsertAuthor inserts an author by name and returns the ID (two params).
 -- name: InsertAuthor :one

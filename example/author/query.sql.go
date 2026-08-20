@@ -26,7 +26,7 @@ type Querier interface {
 	FindAuthorNames(ctx context.Context, authorID int32) ([]FindAuthorNamesRow, error)
 
 	// FindFirstNames finds one (or zero) authors by ID.
-	FindFirstNames(ctx context.Context, authorID int32) ([]*string, error)
+	FindFirstNames(ctx context.Context, authorID int32) ([]string, error)
 
 	// DeleteAuthors deletes authors with a first name of "joe".
 	DeleteAuthors(ctx context.Context) (pgconn.CommandTag, error)
@@ -159,13 +159,13 @@ func addTypeToRegister(typ string) struct{} {
 	return struct{}{}
 }
 
-const findAuthorByIDSQL = `SELECT * FROM author WHERE author_id = $1;`
+const findAuthorByIDSQL = `SELECT author_id, first_name, last_name, suffix AS "suffix?" FROM author WHERE author_id = $1;`
 
 type FindAuthorByIDRow struct {
 	AuthorID  int32   `json:"author_id"`
 	FirstName string  `json:"first_name"`
 	LastName  string  `json:"last_name"`
-	Suffix    *string `json:"suffix"`
+	Suffix    *string `json:"suffix" db:"suffix?"`
 }
 
 // FindAuthorByID implements Querier.FindAuthorByID.
@@ -229,13 +229,13 @@ func (q *DBQuerier) QueueFindAuthorByID(batch Batcher, authorID int32) *QueuedFi
 	return queued
 }
 
-const findAuthorsSQL = `SELECT * FROM author WHERE first_name = $1;`
+const findAuthorsSQL = `SELECT author_id, first_name, last_name, suffix AS "suffix?" FROM author WHERE first_name = $1;`
 
 type FindAuthorsRow struct {
 	AuthorID  int32   `json:"author_id"`
 	FirstName string  `json:"first_name"`
 	LastName  string  `json:"last_name"`
-	Suffix    *string `json:"suffix"`
+	Suffix    *string `json:"suffix" db:"suffix?"`
 }
 
 // FindAuthors implements Querier.FindAuthors.
@@ -302,8 +302,8 @@ func (q *DBQuerier) QueueFindAuthors(batch Batcher, firstName string) *QueuedFin
 const findAuthorNamesSQL = `SELECT first_name, last_name FROM author ORDER BY author_id = $1;`
 
 type FindAuthorNamesRow struct {
-	FirstName *string `json:"first_name"`
-	LastName  *string `json:"last_name"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
 }
 
 // FindAuthorNames implements Querier.FindAuthorNames.
@@ -370,26 +370,26 @@ func (q *DBQuerier) QueueFindAuthorNames(batch Batcher, authorID int32) *QueuedF
 const findFirstNamesSQL = `SELECT first_name FROM author ORDER BY author_id = $1;`
 
 // FindFirstNames implements Querier.FindFirstNames.
-func (q *DBQuerier) FindFirstNames(ctx context.Context, authorID int32) ([]*string, error) {
+func (q *DBQuerier) FindFirstNames(ctx context.Context, authorID int32) ([]string, error) {
 	ctx = context.WithValue(ctx, QueryName{}, "FindFirstNames")
 	rows, err := q.conn.Query(ctx, findFirstNamesSQL, authorID)
 	if err != nil {
 		return nil, fmt.Errorf("query FindFirstNames: %w", q.errWrap(err))
 	}
-	res, err := pgx.CollectRows(rows, pgx.RowTo[*string])
+	res, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	return res, q.errWrap(err)
 }
 
 type QueuedFindFirstNames struct {
 	wrapError func(err error) error
-	onResult  func([]*string) error
+	onResult  func([]string) error
 }
 
 func (q *QueuedFindFirstNames) WrapError(wrapError func(err error) error) {
 	q.wrapError = wrapError
 }
 
-func (q *QueuedFindFirstNames) OnResult(onResult func([]*string) error) {
+func (q *QueuedFindFirstNames) OnResult(onResult func([]string) error) {
 	q.onResult = onResult
 }
 
@@ -401,7 +401,7 @@ func (q *QueuedFindFirstNames) runWrapError(err error) error {
 	return q.wrapError(err)
 }
 
-func (q *QueuedFindFirstNames) runOnResult(result []*string) error {
+func (q *QueuedFindFirstNames) runOnResult(result []string) error {
 	if q.onResult == nil {
 		return nil
 	}
@@ -419,7 +419,7 @@ func (q *DBQuerier) QueueFindFirstNames(batch Batcher, authorID int32) *QueuedFi
 		if err != nil {
 			return queued.runWrapError(err)
 		}
-		res, err := pgx.CollectRows(rows, pgx.RowTo[*string])
+		res, err := pgx.CollectRows(rows, pgx.RowTo[string])
 		if err != nil {
 			return queued.runWrapError(err)
 		}
@@ -681,7 +681,7 @@ func (q *DBQuerier) QueueInsertAuthor(batch Batcher, firstName string, lastName 
 
 const insertAuthorSuffixSQL = `INSERT INTO author (first_name, last_name, suffix)
 VALUES ($1, $2, $3)
-RETURNING author_id, first_name, last_name, suffix;`
+RETURNING author_id, first_name, last_name, suffix AS "suffix?";`
 
 type InsertAuthorSuffixParams struct {
 	FirstName string `json:"FirstName"`
@@ -693,7 +693,7 @@ type InsertAuthorSuffixRow struct {
 	AuthorID  int32   `json:"author_id"`
 	FirstName string  `json:"first_name"`
 	LastName  string  `json:"last_name"`
-	Suffix    *string `json:"suffix"`
+	Suffix    *string `json:"suffix" db:"suffix?"`
 }
 
 // InsertAuthorSuffix implements Querier.InsertAuthorSuffix.
@@ -757,7 +757,7 @@ func (q *DBQuerier) QueueInsertAuthorSuffix(batch Batcher, params InsertAuthorSu
 	return queued
 }
 
-const stringAggFirstNameSQL = `SELECT string_agg(first_name, ',') AS names FROM author WHERE author_id = $1;`
+const stringAggFirstNameSQL = `SELECT string_agg(first_name, ',') AS "names?" FROM author WHERE author_id = $1;`
 
 // StringAggFirstName implements Querier.StringAggFirstName.
 func (q *DBQuerier) StringAggFirstName(ctx context.Context, authorID int32) (*string, error) {

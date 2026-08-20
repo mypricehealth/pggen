@@ -114,7 +114,7 @@ func TestNewQuerier_FindFirstNames(t *testing.T) {
 	t.Run("FindAuthorByID", func(t *testing.T) {
 		firstNames, err := q.FindFirstNames(context.Background(), adamsID)
 		require.NoError(t, err)
-		assert.Equal(t, []*string{ptrs.String("george"), ptrs.String("john")}, firstNames)
+		assert.Equal(t, []string{"george", "john"}, firstNames)
 	})
 }
 

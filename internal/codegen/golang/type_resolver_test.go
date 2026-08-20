@@ -19,6 +19,7 @@ func TestTypeResolver_Resolve(t *testing.T) {
 	caser.AddAcronym("macos", "MacOS")
 	caser.AddAcronym("id", "ID")
 	pgDeviceEnum := pg.EnumType{Name: "device_type", Labels: []string{"macos", "ios", "web"}}
+	pgReqIntDomain := pg.DomainType{Name: "req_int", IsNotNull: true, Elem: pg.Int8}
 	goDeviceEnum := &gotype.EnumType{
 		PgEnum: pgDeviceEnum,
 		Name:   "DeviceType",
@@ -43,6 +44,28 @@ func TestTypeResolver_Resolve(t *testing.T) {
 			want: &gotype.ArrayType{
 				PgArray: pg.ArrayType{Name: "_device_type", Elem: pgDeviceEnum},
 				Elem:    &gotype.ImportType{PkgPath: testPkgPath, Type: goDeviceEnum},
+			},
+		},
+		{
+			name:     "array element ignores the column marker",
+			pgType:   pg.ArrayType{Name: "_device_type", Elem: pgDeviceEnum},
+			nullable: true,
+			want: &gotype.ArrayType{
+				PgArray: pg.ArrayType{Name: "_device_type", Elem: pgDeviceEnum},
+				Elem:    &gotype.ImportType{PkgPath: testPkgPath, Type: goDeviceEnum},
+			},
+		},
+		{
+			name:     "not null domain element survives the column marker",
+			pgType:   pg.ArrayType{Name: "_req_int", Elem: pgReqIntDomain},
+			nullable: true,
+			want: &gotype.ArrayType{
+				PgArray: pg.ArrayType{Name: "_req_int", Elem: pgReqIntDomain},
+				Elem: &gotype.DomainType{
+					Name:     "ReqInt",
+					PgDomain: pgReqIntDomain,
+					Elem:     &gotype.OpaqueType{PgType: pg.Int8, Name: "int"},
+				},
 			},
 		},
 		{
@@ -100,13 +123,25 @@ func TestTypeResolver_Resolve(t *testing.T) {
 			name:     "known nullable",
 			pgType:   pg.BaseType{Name: "point", ID: pgtype.PointOID},
 			nullable: true,
-			want: &gotype.ImportType{
+			want: &gotype.PointerType{Elem: &gotype.ImportType{
 				PkgPath: "github.com/jackc/pgx/v5/pgtype",
 				Type: &gotype.OpaqueType{
 					PgType: pg.BaseType{Name: "point", ID: pgtype.PointOID},
 					Name:   "Point",
 				},
-			},
+			}},
+		},
+		{
+			name:     "known nullable pointer variant is not double wrapped",
+			pgType:   pg.Text,
+			nullable: true,
+			want:     &gotype.PointerType{Elem: &gotype.OpaqueType{Name: "string", PgType: pg.Text}},
+		},
+		{
+			name:     "enum nullable",
+			pgType:   pgDeviceEnum,
+			nullable: true,
+			want:     &gotype.PointerType{Elem: &gotype.ImportType{PkgPath: testPkgPath, Type: goDeviceEnum}},
 		},
 		{
 			name:      "bigint - int8",
@@ -160,7 +195,7 @@ func TestTypeResolver_Resolve(t *testing.T) {
 				ColumnTypes: []pg.Type{pg.Text, pg.Int8},
 			},
 			nullable: true,
-			want: &gotype.ImportType{
+			want: &gotype.PointerType{Elem: &gotype.ImportType{
 				PkgPath: testPkgPath,
 				Type: &gotype.CompositeType{
 					PgComposite: pg.CompositeType{
@@ -175,13 +210,13 @@ func TestTypeResolver_Resolve(t *testing.T) {
 						&gotype.PointerType{Elem: &gotype.OpaqueType{Name: "int", PgType: pg.Int8}},
 					},
 				},
-			},
+			}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resolver := NewTypeResolver(caser, tt.overrides)
-			got, err := resolver.Resolve(tt.pgType, tt.nullable, testPkgPath, true)
+			got, err := resolver.Resolve(tt.pgType, tt.nullable, testPkgPath)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -244,6 +279,41 @@ func TestType_QualifyRel(t *testing.T) {
 func TestCreateCompositeType(t *testing.T) {
 	caser := casing.NewCaser()
 	resolver := NewTypeResolver(caser, nil)
+	pgImage := pg.CompositeType{
+		Name:        "image",
+		ColumnNames: []string{"source"},
+		ColumnTypes: []pg.Type{pg.Text},
+	}
+	pgImageArray := pg.ArrayType{Name: "_image", Elem: pgImage}
+	pgImageSet := pg.CompositeType{
+		Name:        "image_set",
+		ColumnNames: []string{"orig", "rest"},
+		ColumnTypes: []pg.Type{pgImage, pgImageArray},
+	}
+	goImage := &gotype.ImportType{
+		PkgPath: "example.com/foo",
+		Type: &gotype.CompositeType{
+			PgComposite: pgImage,
+			Name:        "Image",
+			FieldNames:  []string{"Source"},
+			FieldTypes: []gotype.Type{
+				&gotype.PointerType{Elem: &gotype.OpaqueType{PgType: pg.Text, Name: "string"}},
+			},
+		},
+	}
+	pgReqInt := pg.DomainType{Name: "req_int", IsNotNull: true, Elem: pg.Int8}
+	pgOptInt := pg.DomainType{Name: "opt_int", Elem: pg.Int8}
+	pgTimeOfDay := pg.CompositeType{
+		Name:        "time_of_day_type",
+		ColumnNames: []string{"hour", "minute"},
+		ColumnTypes: []pg.Type{pgReqInt, pgOptInt},
+	}
+	pgAppointment := pg.CompositeType{
+		Name:           "appointment",
+		ColumnNames:    []string{"label", "note"},
+		ColumnTypes:    []pg.Type{pg.Int8, pg.Text},
+		ColumnNotNulls: []bool{true, false},
+	}
 	tests := []struct {
 		pkgPath string
 		pgType  pg.CompositeType
@@ -269,6 +339,62 @@ func TestCreateCompositeType(t *testing.T) {
 					FieldTypes: []gotype.Type{
 						&gotype.PointerType{Elem: &gotype.OpaqueType{PgType: pg.Text, Name: "string"}},
 						&gotype.PointerType{Elem: &gotype.OpaqueType{PgType: pg.Int8, Name: "int"}},
+					},
+				},
+			},
+		},
+		{
+			pkgPath: "example.com/foo",
+			pgType:  pgImageSet,
+			want: &gotype.ImportType{
+				PkgPath: "example.com/foo",
+				Type: &gotype.CompositeType{
+					PgComposite: pgImageSet,
+					Name:        "ImageSet",
+					FieldNames:  []string{"Orig", "Rest"},
+					FieldTypes: []gotype.Type{
+						&gotype.PointerType{Elem: goImage},
+						&gotype.ArrayType{PgArray: pgImageArray, Elem: goImage},
+					},
+				},
+			},
+		},
+		{
+			pkgPath: "example.com/foo",
+			pgType:  pgTimeOfDay,
+			want: &gotype.ImportType{
+				PkgPath: "example.com/foo",
+				Type: &gotype.CompositeType{
+					PgComposite: pgTimeOfDay,
+					Name:        "TimeOfDayType",
+					FieldNames:  []string{"Hour", "Minute"},
+					FieldTypes: []gotype.Type{
+						&gotype.DomainType{
+							Name:     "ReqInt",
+							PgDomain: pgReqInt,
+							Elem:     &gotype.OpaqueType{PgType: pg.Int8, Name: "int"},
+						},
+						&gotype.DomainType{
+							Name:     "OptInt",
+							PgDomain: pgOptInt,
+							Elem:     &gotype.PointerType{Elem: &gotype.OpaqueType{PgType: pg.Int8, Name: "int"}},
+						},
+					},
+				},
+			},
+		},
+		{
+			pkgPath: "example.com/foo",
+			pgType:  pgAppointment,
+			want: &gotype.ImportType{
+				PkgPath: "example.com/foo",
+				Type: &gotype.CompositeType{
+					PgComposite: pgAppointment,
+					Name:        "Appointment",
+					FieldNames:  []string{"Label", "Note"},
+					FieldTypes: []gotype.Type{
+						&gotype.OpaqueType{PgType: pg.Int8, Name: "int"},
+						&gotype.PointerType{Elem: &gotype.OpaqueType{PgType: pg.Text, Name: "string"}},
 					},
 				},
 			},

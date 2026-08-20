@@ -27,20 +27,20 @@ func NewTypeResolver(c casing.Caser, overrides map[string]string) TypeResolver {
 }
 
 // Resolve maps a Postgres type to a Go type.
-func (tr TypeResolver) Resolve(pgt pg.Type, nullable bool, pkgPath string, isOutput bool) (gotype.Type, error) {
-	typ, err := tr.innerResolve(pgt, nullable, pkgPath, isOutput)
+func (tr TypeResolver) Resolve(pgt pg.Type, nullable bool, pkgPath string) (gotype.Type, error) {
+	typ, err := tr.innerResolve(pgt, nullable, pkgPath)
 	if err != nil {
 		return nil, err
 	}
 
-	if !isOutput && nullable {
+	if nullable {
 		typ = makeNullable(typ)
 	}
 
 	return typ, nil
 }
 
-func (tr TypeResolver) innerResolve(pgt pg.Type, nullable bool, pkgPath string, isOutput bool) (gotype.Type, error) {
+func (tr TypeResolver) innerResolve(pgt pg.Type, nullable bool, pkgPath string) (gotype.Type, error) {
 	// Custom user override.
 	if goType, ok := tr.overrides[pgt.String()]; ok {
 		opaque, err := gotype.ParseOpaqueType(goType, pgt)
@@ -100,7 +100,9 @@ func (tr TypeResolver) innerResolve(pgt pg.Type, nullable bool, pkgPath string, 
 	// New type that pggen will define in generated source code.
 	switch pgt := pgt.(type) {
 	case pg.ArrayType:
-		elemType, err := tr.Resolve(pgt.Elem, nullable, pkgPath, isOutput)
+		// Postgres has no syntax to mark an array element nullable. A domain element still carries
+		// its own constraint.
+		elemType, err := tr.Resolve(pgt.Elem, false, pkgPath)
 		if err != nil {
 			return nil, fmt.Errorf("resolve array elem type for array type %q: %w", pgt.Name, err)
 		}
@@ -115,7 +117,7 @@ func (tr TypeResolver) innerResolve(pgt pg.Type, nullable bool, pkgPath string, 
 		}
 		return comp, nil
 	case pg.DomainType:
-		elem, err := tr.Resolve(pgt.Elem, !pgt.IsNotNull, pkgPath, isOutput)
+		elem, err := tr.Resolve(pgt.Elem, !pgt.IsNotNull, pkgPath)
 		if err != nil {
 			return nil, fmt.Errorf("resolve base type for domain type %q: %w", pgt.Name, err)
 		}
@@ -124,6 +126,16 @@ func (tr TypeResolver) innerResolve(pgt pg.Type, nullable bool, pkgPath string, 
 	}
 
 	return nil, fmt.Errorf("no go type found for Postgres type %s oid=%d", pgt.String(), pgt.OID())
+}
+
+// isNotNullDomain reports whether a domain forbids nulls. CREATE TYPE cannot constrain an
+// attribute. A domain is the only way to require one.
+func isNotNullDomain(typ pg.Type) bool {
+	dom, ok := typ.(pg.DomainType)
+	if !ok {
+		return false
+	}
+	return dom.IsNotNull || isNotNullDomain(dom.Elem)
 }
 
 func makeNullable(opaque gotype.Type) gotype.Type {
@@ -162,7 +174,12 @@ func CreateCompositeType(
 			ident = gotype.ChooseFallbackName(colName, "UnnamedField"+strconv.Itoa(i))
 		}
 		fieldNames[i] = ident
-		fieldType, err := resolver.Resolve(pgt.ColumnTypes[i] /*nullable*/, true, pkgPath, true)
+		colType := pgt.ColumnTypes[i]
+		notNull := isNotNullDomain(colType)
+		if !notNull && i < len(pgt.ColumnNotNulls) {
+			notNull = pgt.ColumnNotNulls[i]
+		}
+		fieldType, err := resolver.Resolve(colType, !notNull, pkgPath)
 		if err != nil {
 			return nil, fmt.Errorf("resolve composite column type %s.%s: %w", pgt.Name, colName, err)
 		}

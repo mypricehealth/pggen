@@ -26,7 +26,7 @@ func TestNewQuerier_FindAuthorByID(t *testing.T) {
 	t.Run("CountAuthors two", func(t *testing.T) {
 		got, err := q.CountAuthors(context.Background())
 		require.NoError(t, err)
-		assert.Equal(t, 2, *got)
+		assert.Equal(t, 2, got)
 	})
 
 	t.Run("FindAuthorByID", func(t *testing.T) {
