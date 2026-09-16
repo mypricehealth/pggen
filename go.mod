@@ -1,8 +1,6 @@
 module github.com/mypricehealth/pggen
 
-go 1.22.0
-
-toolchain go1.22.5
+go 1.25.0
 
 require (
 	github.com/bmatcuk/doublestar v1.3.4
@@ -10,13 +8,13 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/google/go-cmp v0.6.0
 	github.com/jackc/pgx-shopspring-decimal v0.0.0-20220624020537-1d36b5a1853e
-	github.com/jackc/pgx/v5 v5.7.1
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/peterbourgon/ff/v3 v3.4.0
 	github.com/shopspring/decimal v1.4.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
-	golang.org/x/mod v0.21.0
-	golang.org/x/tools v0.26.0
+	golang.org/x/mod v0.27.0
+	golang.org/x/tools v0.36.0
 )
 
 require (
@@ -45,10 +43,9 @@ require (
 	go.opentelemetry.io/otel/metric v1.31.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.26.0 // indirect
 	go.opentelemetry.io/otel/trace v1.31.0 // indirect
-	golang.org/x/crypto v0.28.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.26.0 // indirect
-	golang.org/x/text v0.19.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.35.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.1 // indirect
